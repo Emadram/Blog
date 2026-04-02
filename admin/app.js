@@ -67,6 +67,8 @@ const dom = {
   newsImportSampleTexts: Array.from(
     document.querySelectorAll("[data-news-import-sample-text]")
   ),
+  newsAutofill: document.querySelector('[data-news-autofill]'),
+  newsAutofillStatus: document.querySelector('[data-news-autofill-status]'),
   projectsSelectAll: document.querySelector('[data-projects-select-all]'),
   projectsSelectedCount: document.querySelector('[data-projects-selected-count]'),
   projectsBulkDelete: document.querySelector('[data-projects-bulk-delete]'),
@@ -139,8 +141,13 @@ const normalizeBaseUrl = (value) => {
 
 const siteBaseUrl = normalizeBaseUrl(SITE_BASE_URL);
 const hasConfig = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
+const NEWS_ENRICH_FUNCTION = "news-enrich";
 
 const supabase = hasConfig ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+
+let newsAutofillInFlight = false;
+let lastNewsAutofillUrl = "";
+let newsAutofillTimer = null;
 
 const setHidden = (element, hidden) => {
   if (!element) {
@@ -238,6 +245,10 @@ const setFieldMessage = (element, message) => {
     element.textContent = "";
     element.classList.add("hidden");
   }
+};
+
+const setNewsAutofillStatus = (message) => {
+  setFieldMessage(dom.newsAutofillStatus, message);
 };
 
 const setCleanPreviewsStatus = (message) => {
@@ -753,6 +764,19 @@ const parseTags = (value) =>
     .split(",")
     .map((tag) => tag.trim())
     .filter(Boolean);
+
+const isValidUrl = (value) => {
+  try {
+    const parsed = new URL(value);
+    return /^https?:$/i.test(parsed.protocol);
+  } catch (_error) {
+    return false;
+  }
+};
+
+const isJwtKey = (value) => typeof value === "string" && value.trim().startsWith("eyJ");
+
+const getFunctionsKey = () => (isJwtKey(SUPABASE_ANON_KEY) ? SUPABASE_ANON_KEY : "");
 
 const normalizeImportUrl = (value) =>
   String(value || "")
@@ -1454,6 +1478,8 @@ const resetNewsForm = () => {
   form.reset();
   form.querySelector("[name=\"id\"]").value = "";
   state.selected.news = null;
+  lastNewsAutofillUrl = "";
+  setNewsAutofillStatus("");
   renderNewsList();
 };
 
@@ -1511,6 +1537,8 @@ const fillNewsForm = (item) => {
   form.querySelector("[name=\"read_minutes\"]").value = item?.read_minutes ?? "";
   form.querySelector("[name=\"pinned\"]").checked = Boolean(item?.pinned);
   form.querySelector("[name=\"category\"]").value = item?.category || "";
+  lastNewsAutofillUrl = normalizeImportUrl(item?.url || "");
+  setNewsAutofillStatus("");
   renderNewsList();
 };
 
@@ -1961,6 +1989,89 @@ const handleProjectsBulkDelete = async () => {
   setStatus("Selected projects deleted.", "success");
 };
 
+const autoFillNewsFromUrl = async ({ form, force = false } = {}) => {
+  if (!supabase || !form) {
+    return null;
+  }
+
+  const urlInput = form.querySelector("[name=\"url\"]");
+  const titleInput = form.querySelector("[name=\"title\"]");
+  const sourceInput = form.querySelector("[name=\"source\"]");
+  const summaryInput = form.querySelector("[name=\"summary\"]");
+  const publishedInput = form.querySelector("[name=\"published_at\"]");
+
+  const url = urlInput?.value.trim() || "";
+  if (!url) {
+    setNewsAutofillStatus("Add a URL to fetch metadata.");
+    return null;
+  }
+
+  if (!isValidUrl(url)) {
+    setNewsAutofillStatus("Enter a valid URL.");
+    return null;
+  }
+
+  const normalizedUrl = normalizeImportUrl(url);
+  if (!force && normalizedUrl && normalizedUrl === lastNewsAutofillUrl) {
+    return null;
+  }
+
+  if (newsAutofillInFlight) {
+    return null;
+  }
+
+  const functionsKey = getFunctionsKey();
+  if (!functionsKey) {
+    setNewsAutofillStatus("Auto-fill needs a Supabase anon key (JWT). Update admin/config.js.");
+    return null;
+  }
+
+  newsAutofillInFlight = true;
+  setNewsAutofillStatus("Fetching metadata...");
+
+  try {
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/${NEWS_ENRICH_FUNCTION}`, {
+      method: "POST",
+      headers: {
+        apikey: functionsKey,
+        Authorization: `Bearer ${functionsKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ url }),
+    });
+
+    const data = await response.json().catch(() => null);
+    if (!response.ok) {
+      const errorMessage = data?.error || data?.message || `Auto-fill failed (${response.status}).`;
+      setNewsAutofillStatus(errorMessage);
+      return null;
+    }
+
+    lastNewsAutofillUrl = normalizedUrl || url;
+
+    if (titleInput && data.title) {
+      titleInput.value = data.title;
+    }
+    if (sourceInput && data.source) {
+      sourceInput.value = data.source;
+    }
+    if (summaryInput && data.summary) {
+      summaryInput.value = data.summary;
+    }
+    if (publishedInput && data.published_at) {
+      publishedInput.value = toInputDateTime(data.published_at);
+    }
+
+    setNewsAutofillStatus("Auto-fill complete.");
+    return data;
+  } catch (_error) {
+    setNewsAutofillStatus("Auto-fill failed.");
+    return null;
+  } finally {
+    newsAutofillInFlight = false;
+  }
+};
+
 const handleNewsSubmit = async (event) => {
   event.preventDefault();
   if (!supabase) {
@@ -1968,9 +2079,15 @@ const handleNewsSubmit = async (event) => {
   }
   const form = dom.forms.news;
   const id = form.querySelector("[name=\"id\"]").value.trim();
-  const title = form.querySelector("[name=\"title\"]").value.trim();
-  const source = form.querySelector("[name=\"source\"]").value.trim();
+  let title = form.querySelector("[name=\"title\"]").value.trim();
+  let source = form.querySelector("[name=\"source\"]").value.trim();
   const url = form.querySelector("[name=\"url\"]").value.trim();
+
+  if (url && (!title || !source)) {
+    await autoFillNewsFromUrl({ form, force: true });
+    title = form.querySelector("[name=\"title\"]").value.trim();
+    source = form.querySelector("[name=\"source\"]").value.trim();
+  }
 
   if (!title || !source || !url) {
     setStatus("Title, source, and URL are required.", "error");
@@ -2271,6 +2388,42 @@ const init = async () => {
       applyNewsImportSample(type);
     });
   });
+  dom.newsAutofill?.addEventListener("click", async () => {
+    await autoFillNewsFromUrl({ form: dom.forms.news, force: true });
+  });
+
+  const newsUrlInput = dom.forms.news?.querySelector("[name=\"url\"]");
+  const newsTitleInput = dom.forms.news?.querySelector("[name=\"title\"]");
+  const newsSourceInput = dom.forms.news?.querySelector("[name=\"source\"]");
+  const scheduleNewsAutofill = () => {
+    if (!newsUrlInput) {
+      return;
+    }
+    const urlValue = newsUrlInput.value.trim();
+    if (!urlValue || !isValidUrl(urlValue)) {
+      return;
+    }
+    if (newsTitleInput?.value.trim() && newsSourceInput?.value.trim()) {
+      return;
+    }
+    if (newsAutofillTimer) {
+      window.clearTimeout(newsAutofillTimer);
+    }
+    newsAutofillTimer = window.setTimeout(() => {
+      autoFillNewsFromUrl({ form: dom.forms.news, force: false });
+    }, 600);
+  };
+  newsUrlInput?.addEventListener("blur", async () => {
+    if (!newsUrlInput.value.trim()) {
+      return;
+    }
+    if (newsTitleInput?.value.trim() && newsSourceInput?.value.trim()) {
+      return;
+    }
+    await autoFillNewsFromUrl({ form: dom.forms.news, force: false });
+  });
+  newsUrlInput?.addEventListener("input", scheduleNewsAutofill);
+  newsUrlInput?.addEventListener("paste", scheduleNewsAutofill);
   dom.refreshActivity?.addEventListener("click", async () => {
     setStatus("Refreshing activity...", "info");
     await Promise.all([loadActivity(), loadSearchAiQueries()]);
