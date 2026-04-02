@@ -1,0 +1,504 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ruflo Admin</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Space+Grotesk:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="bg-glow" aria-hidden="true"></div>
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark">R</span>
+        <div>
+          <p class="brand-title">Ruflo Admin</p>
+          <p class="brand-subtitle">Content studio for posts, news, and projects.</p>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <div class="status" data-status role="status" aria-live="polite"></div>
+        <div class="user-pill" data-user-badge aria-live="polite"></div>
+        <button class="button ghost hidden" type="button" data-signout>Sign out</button>
+      </div>
+    </header>
+
+    <main class="shell">
+      <section class="auth surface animate-rise" data-auth>
+        <div class="auth-grid">
+          <div class="auth-copy">
+            <p class="eyebrow">Secure access</p>
+            <h1>Sign in to manage the content pipeline.</h1>
+            <p class="muted">
+              Only accounts listed in the admin_users table can edit content.
+            </p>
+          </div>
+          <form class="auth-form" data-login-form>
+            <div class="field">
+              <label for="login-email">Email</label>
+              <input id="login-email" name="email" type="email" autocomplete="email" required />
+            </div>
+            <div class="field">
+              <label for="login-password">Password</label>
+              <input
+                id="login-password"
+                name="password"
+                type="password"
+                autocomplete="current-password"
+                required
+              />
+            </div>
+            <p class="form-hint">Create an auth user first, then insert their id into admin_users.</p>
+            <button class="button accent" type="submit">Sign in</button>
+            <p class="form-error hidden" data-login-error role="alert"></p>
+          </form>
+        </div>
+      </section>
+
+      <section class="dashboard hidden" data-dashboard>
+        <div class="dashboard-grid">
+          <nav class="tabs surface" aria-label="Content sections">
+            <button class="tab active" type="button" data-tab="posts">Posts</button>
+            <button class="tab" type="button" data-tab="news">News</button>
+            <button class="tab" type="button" data-tab="projects">Projects</button>
+            <button class="tab" type="button" data-tab="activity">Activity</button>
+          </nav>
+
+          <div class="panel">
+            <section class="resource" data-resource="posts">
+              <div class="resource-header">
+                <div>
+                  <p class="eyebrow">Long-form</p>
+                  <h2>Posts and drafts</h2>
+                  <p class="muted">Markdown stories with draft and publish control.</p>
+                </div>
+                <button class="button" type="button" data-new="posts">New post</button>
+              </div>
+              <div class="resource-body">
+                <div class="resource-list surface">
+                  <div class="list-toolbar">
+                    <div class="queue-summary" data-post-summary>
+                      <span class="summary-pill" data-post-count="drafts">Drafts 0</span>
+                      <span class="summary-pill" data-post-count="scheduled">Scheduled 0</span>
+                      <span class="summary-pill" data-post-count="live">Live 0</span>
+                    </div>
+                    <div class="bulk-actions">
+                      <label class="select-all">
+                        <input type="checkbox" data-post-select-all />
+                        Select all
+                      </label>
+                      <span class="selected-count" data-selected-count>Selected 0</span>
+                      <button class="button ghost" type="button" data-bulk-publish>Publish</button>
+                      <button class="button ghost" type="button" data-bulk-draft>Set draft</button>
+                      <button class="button ghost" type="button" data-bulk-delete>Delete</button>
+                    </div>
+                    <div class="filter-row" role="tablist" aria-label="Post filters">
+                      <button class="filter-chip active" type="button" data-post-filter="all" aria-pressed="true">
+                        All
+                      </button>
+                      <button class="filter-chip" type="button" data-post-filter="drafts" aria-pressed="false">
+                        Drafts
+                      </button>
+                      <button class="filter-chip" type="button" data-post-filter="scheduled" aria-pressed="false">
+                        Scheduled
+                      </button>
+                      <button class="filter-chip" type="button" data-post-filter="live" aria-pressed="false">
+                        Live
+                      </button>
+                    </div>
+                    <div class="schedule-panel">
+                      <div class="schedule-header">
+                        <div>
+                          <p class="eyebrow">Schedule</p>
+                          <p class="schedule-reminder muted" data-schedule-reminder></p>
+                        </div>
+                        <div class="schedule-actions">
+                          <button class="button ghost" type="button" data-clean-previews>Clean previews</button>
+                          <span class="schedule-status" data-clean-previews-status></span>
+                        </div>
+                      </div>
+                      <div class="schedule-list" data-scheduled-queue></div>
+                      <div class="schedule-bulk">
+                        <label class="sr-only" for="bulk-schedule-time">Schedule selected posts</label>
+                        <input id="bulk-schedule-time" type="datetime-local" data-bulk-schedule-time />
+                        <button class="button ghost" type="button" data-bulk-schedule>Schedule selected</button>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="list-items" data-list="posts"></div>
+                </div>
+                <div class="resource-editor">
+                  <form class="resource-form surface" data-form="posts">
+                    <input type="hidden" name="id" />
+                    <div class="field">
+                      <label for="post-title">Title</label>
+                      <input id="post-title" name="title" type="text" required />
+                    </div>
+                    <div class="field-grid two">
+                      <div class="field">
+                        <label for="post-slug">Slug</label>
+                        <input id="post-slug" name="slug" type="text" required />
+                        <p class="form-error hidden" data-slug-error role="alert"></p>
+                      </div>
+                      <div class="field">
+                        <label for="post-published">Published at</label>
+                        <input id="post-published" name="published_at" type="datetime-local" />
+                        <p class="form-hint" data-publish-hint>Set a future date with draft off to schedule.</p>
+                      </div>
+                    </div>
+                    <div class="field">
+                      <label for="post-description">Description</label>
+                      <textarea id="post-description" name="description" rows="2"></textarea>
+                    </div>
+                    <div class="field">
+                      <label for="post-content">Markdown content</label>
+                      <textarea id="post-content" name="content_md" rows="8" required></textarea>
+                      <p class="form-error hidden" data-post-error role="alert"></p>
+                    </div>
+                    <div class="field-grid two">
+                      <div class="field">
+                        <label for="post-tags">Tags (comma separated)</label>
+                        <input id="post-tags" name="tags" type="text" />
+                      </div>
+                      <div class="field checkbox">
+                        <label>
+                          <input name="draft" type="checkbox" />
+                          Draft mode
+                        </label>
+                      </div>
+                    </div>
+                    <div class="field-grid two">
+                      <div class="field">
+                        <label for="post-cover">Cover image URL</label>
+                        <input id="post-cover" name="cover_image" type="url" />
+                      </div>
+                      <div class="field">
+                        <label for="post-cover-alt">Cover image alt</label>
+                        <input id="post-cover-alt" name="cover_image_alt" type="text" />
+                      </div>
+                    </div>
+                    <div class="field">
+                      <label for="post-cover-file">Upload cover image</label>
+                      <input
+                        id="post-cover-file"
+                        name="cover_file"
+                        type="file"
+                        accept="image/*"
+                        data-cover-file
+                      />
+                      <p class="form-hint" data-cover-status></p>
+                    </div>
+                    <div class="form-actions">
+                      <button class="button accent" type="submit" data-save-post>Save post</button>
+                      <button class="button" type="button" data-publish-now>Publish now</button>
+                      <button class="button ghost" type="button" data-set-draft>Set draft</button>
+                      <button class="button ghost" type="button" data-delete="posts">Delete</button>
+                    </div>
+                  </form>
+
+                  <div class="readiness surface" data-readiness>
+                    <div class="readiness-header">
+                      <div>
+                        <p class="eyebrow">Readiness</p>
+                        <p class="muted">Required fields and publish checks.</p>
+                      </div>
+                      <span class="readiness-status" data-readiness-status>Draft</span>
+                    </div>
+                    <div class="readiness-list" data-readiness-list></div>
+                  </div>
+
+                  <div class="preview surface" data-preview>
+                    <div class="preview-header">
+                      <div>
+                        <p class="eyebrow">Preview</p>
+                        <p class="muted" data-preview-meta></p>
+                      </div>
+                      <div class="preview-actions">
+                        <button class="button ghost" type="button" data-preview-generate>
+                          Generate preview link
+                        </button>
+                        <a class="preview-link hidden" data-preview-link target="_blank" rel="noopener">
+                          Open in site
+                        </a>
+                      </div>
+                    </div>
+                    <p class="preview-note muted" data-preview-note></p>
+                    <img class="preview-cover hidden" data-preview-cover alt="" />
+                    <h3 class="preview-title" data-preview-title>Untitled draft</h3>
+                    <p class="preview-description" data-preview-description></p>
+                    <div class="preview-body" data-preview-body></div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="resource hidden" data-resource="news">
+              <div class="resource-header">
+                <div>
+                  <p class="eyebrow">Curated</p>
+                  <h2>News links</h2>
+                  <p class="muted">Short summaries, sources, and pinned highlights.</p>
+                </div>
+                <button class="button" type="button" data-new="news">New link</button>
+              </div>
+              <div class="resource-body">
+                <div class="resource-list surface">
+                  <div class="list-toolbar">
+                    <div class="bulk-actions">
+                      <label class="select-all">
+                        <input type="checkbox" data-news-select-all />
+                        Select all
+                      </label>
+                      <span class="selected-count" data-news-selected-count>Selected 0</span>
+                      <button class="button ghost" type="button" data-news-bulk-pin>Pin</button>
+                      <button class="button ghost" type="button" data-news-bulk-unpin>Unpin</button>
+                      <button class="button ghost" type="button" data-news-bulk-delete>Delete</button>
+                    </div>
+                    <div class="import-panel">
+                      <div class="import-header">
+                        <p class="eyebrow">Import</p>
+                        <p class="muted">Paste JSON/CSV or upload a file.</p>
+                      </div>
+                      <textarea
+                        class="import-text"
+                        rows="4"
+                        placeholder="[{\"title\": \"...\", \"source\": \"...\", \"url\": \"...\"}] or CSV"
+                        data-news-import-text
+                      ></textarea>
+                      <div class="import-actions">
+                        <input type="file" accept=".json,.csv" data-news-import-file />
+                        <button class="button ghost" type="button" data-news-import>Import</button>
+                      </div>
+                      <div class="import-samples">
+                        <div class="import-samples-header">
+                          <p class="form-hint">Sample payloads</p>
+                          <div class="import-sample-actions">
+                            <button class="button ghost" type="button" data-news-import-sample="json">
+                              Use JSON sample
+                            </button>
+                            <button class="button ghost" type="button" data-news-import-sample="csv">
+                              Use CSV sample
+                            </button>
+                          </div>
+                        </div>
+                        <div class="import-sample-grid">
+                          <div class="import-sample-block">
+                            <p class="form-hint">JSON</p>
+                            <pre class="import-sample" data-news-import-sample-text="json">[
+  {
+    "title": "Astro 5.2: Server Actions",
+    "source": "Astro",
+    "url": "https://astro.build/blog/astro-5-2/",
+    "summary": "Server actions land with edge-ready streaming.",
+    "published_at": "2026-04-02T09:00:00Z",
+    "tags": ["astro", "release"],
+    "read_minutes": 4,
+    "pinned": true,
+    "category": "release"
+  }
+]</pre>
+                          </div>
+                          <div class="import-sample-block">
+                            <p class="form-hint">CSV</p>
+                            <pre class="import-sample" data-news-import-sample-text="csv">title,source,url,summary,published_at,tags,read_minutes,pinned,category
+"Astro 5.2: Server Actions",Astro,https://astro.build/blog/astro-5-2/,"Server actions land with edge-ready streaming.",2026-04-02T09:00:00Z,"astro,release",4,true,release</pre>
+                          </div>
+                        </div>
+                      </div>
+                      <p class="form-hint" data-news-import-status></p>
+                    </div>
+                  </div>
+                  <div class="list-items" data-list="news"></div>
+                </div>
+                <div class="resource-editor">
+                  <form class="resource-form surface" data-form="news">
+                    <input type="hidden" name="id" />
+                    <div class="field">
+                      <label for="news-title">Title</label>
+                      <input id="news-title" name="title" type="text" required />
+                    </div>
+                    <div class="field-grid two">
+                      <div class="field">
+                        <label for="news-source">Source</label>
+                        <input id="news-source" name="source" type="text" required />
+                      </div>
+                      <div class="field">
+                        <label for="news-url">URL</label>
+                        <input id="news-url" name="url" type="url" required />
+                      </div>
+                    </div>
+                    <div class="field">
+                      <label for="news-summary">Summary</label>
+                      <textarea id="news-summary" name="summary" rows="3"></textarea>
+                    </div>
+                    <div class="field-grid two">
+                      <div class="field">
+                        <label for="news-published">Published at</label>
+                        <input id="news-published" name="published_at" type="datetime-local" />
+                      </div>
+                      <div class="field">
+                        <label for="news-read">Read minutes</label>
+                        <input id="news-read" name="read_minutes" type="number" min="1" step="1" />
+                      </div>
+                    </div>
+                    <div class="field-grid two">
+                      <div class="field">
+                        <label for="news-tags">Tags (comma separated)</label>
+                        <input id="news-tags" name="tags" type="text" />
+                      </div>
+                      <div class="field">
+                        <label for="news-category">Category</label>
+                        <input id="news-category" name="category" type="text" />
+                      </div>
+                    </div>
+                    <div class="field checkbox">
+                      <label>
+                        <input name="pinned" type="checkbox" />
+                        Pin this link
+                      </label>
+                    </div>
+                    <div class="form-actions">
+                      <button class="button accent" type="submit">Save link</button>
+                      <button class="button ghost" type="button" data-delete="news">Delete</button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </section>
+
+            <section class="resource hidden" data-resource="projects">
+              <div class="resource-header">
+                <div>
+                  <p class="eyebrow">Build log</p>
+                  <h2>Projects</h2>
+                  <p class="muted">Track shipped work, tools, and repos.</p>
+                </div>
+                <button class="button" type="button" data-new="projects">New project</button>
+              </div>
+              <div class="resource-body">
+                <div class="resource-list surface">
+                  <div class="list-toolbar">
+                    <div class="bulk-actions">
+                      <label class="select-all">
+                        <input type="checkbox" data-projects-select-all />
+                        Select all
+                      </label>
+                      <span class="selected-count" data-projects-selected-count>Selected 0</span>
+                      <button class="button ghost" type="button" data-projects-bulk-delete>Delete</button>
+                    </div>
+                  </div>
+                  <div class="list-items" data-list="projects"></div>
+                </div>
+                <div class="resource-editor">
+                  <form class="resource-form surface" data-form="projects">
+                    <input type="hidden" name="id" />
+                    <p class="form-hint" data-project-updated></p>
+                    <div class="field">
+                      <label for="project-title">Title</label>
+                      <input id="project-title" name="title" type="text" required />
+                    </div>
+                    <div class="field">
+                      <label for="project-url">URL</label>
+                      <input id="project-url" name="url" type="url" required />
+                    </div>
+                    <div class="field">
+                      <label for="project-description">Description</label>
+                      <textarea id="project-description" name="description" rows="3"></textarea>
+                    </div>
+                    <div class="field-grid two">
+                      <div class="field">
+                        <label for="project-tags">Tags (comma separated)</label>
+                        <input id="project-tags" name="tags" type="text" />
+                      </div>
+                      <div class="field">
+                        <label for="project-stars">Stars</label>
+                        <input id="project-stars" name="stars" type="number" min="0" step="1" />
+                      </div>
+                    </div>
+                    <div class="field">
+                      <label for="project-language">Primary language</label>
+                      <input id="project-language" name="language" type="text" />
+                    </div>
+                    <div class="form-actions">
+                      <button class="button accent" type="submit">Save project</button>
+                      <button class="button ghost" type="button" data-delete="projects">Delete</button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </section>
+
+            <section class="resource hidden" data-resource="activity">
+              <div class="resource-header">
+                <div>
+                  <p class="eyebrow">Audit</p>
+                  <h2>Activity log</h2>
+                  <p class="muted">Recent updates across posts, news, and projects.</p>
+                </div>
+                <button class="button" type="button" data-refresh-activity>Refresh</button>
+              </div>
+              <div class="resource-body">
+                <div class="resource-list surface">
+                  <div class="list-toolbar">
+                    <div class="filter-row" role="tablist" aria-label="Activity resource filters">
+                      <button class="filter-chip active" type="button" data-activity-resource="all" aria-pressed="true">
+                        All
+                      </button>
+                      <button class="filter-chip" type="button" data-activity-resource="posts" aria-pressed="false">
+                        Posts
+                      </button>
+                      <button class="filter-chip" type="button" data-activity-resource="news" aria-pressed="false">
+                        News
+                      </button>
+                      <button class="filter-chip" type="button" data-activity-resource="projects" aria-pressed="false">
+                        Projects
+                      </button>
+                    </div>
+                    <div class="filter-row" role="tablist" aria-label="Activity action filters">
+                      <button class="filter-chip active" type="button" data-activity-action="all" aria-pressed="true">
+                        All
+                      </button>
+                      <button class="filter-chip" type="button" data-activity-action="insert" aria-pressed="false">
+                        Created
+                      </button>
+                      <button class="filter-chip" type="button" data-activity-action="update" aria-pressed="false">
+                        Updated
+                      </button>
+                      <button class="filter-chip" type="button" data-activity-action="delete" aria-pressed="false">
+                        Deleted
+                      </button>
+                    </div>
+                  </div>
+                  <div class="list-items" data-list="activity"></div>
+                </div>
+                <div class="resource-list surface">
+                  <div class="list-toolbar">
+                    <div class="schedule-header">
+                      <div>
+                        <p class="eyebrow">Search AI</p>
+                        <p class="muted">Questions asked through the site assistant.</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="list-items" data-list="search-ai-queries"></div>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <p>Admin app is separate from the public blog. Keep credentials private.</p>
+    </footer>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
