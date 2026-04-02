@@ -1,0 +1,67 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light dark;
+}
+
+html.dark {
+  color-scheme: dark;
+}
+
+html:not(.dark) {
+  color-scheme: light;
+}
+
+body {
+  @apply bg-slate-50 text-slate-900 antialiased leading-relaxed dark:bg-slate-950 dark:text-slate-100;
+}
+
+a {
+  @apply text-slate-900 dark:text-slate-100;
+}
+
+@layer base {
+  a:focus-visible,
+  button:focus-visible,
+  [role="button"]:focus-visible,
+  input:focus-visible,
+  textarea:focus-visible,
+  select:focus-visible {
+    @apply outline-none ring-2 ring-sky-500 ring-offset-2 ring-offset-white dark:ring-sky-400 dark:ring-offset-slate-950;
+  }
+}
+
+@layer utilities {
+  .animate-fade-up {
+    animation: fade-up 600ms ease-out both;
+  }
+
+  .animate-fade-up-delayed {
+    animation: fade-up 700ms ease-out 120ms both;
+  }
+}
+
+@layer components {
+  .markdown-gallery {
+    @apply grid gap-4 sm:grid-cols-2 lg:grid-cols-3;
+  }
+
+  .markdown-gallery img {
+    @apply w-full rounded-2xl border border-slate-200 bg-white/80 shadow-sm dark:border-slate-800/60 dark:bg-slate-900/40;
+  }
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
