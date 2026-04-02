@@ -1,4 +1,5 @@
 // @ts-nocheck
+export const config = { verify_jwt: false };
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -21,7 +22,10 @@ type SearchRequest = {
 
 const OPENROUTER_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
 const OPENROUTER_MODEL = "openrouter/auto";
-const MAX_CONTEXT_ITEMS = 8;
+const MAX_CONTEXT_ITEMS = 5;
+const MAX_TITLE_CHARS = 120;
+const MAX_DESCRIPTION_CHARS = 240;
+const MAX_TAGS = 4;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -32,6 +36,10 @@ const corsHeaders = {
 const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
 const serviceRoleKey = Deno.env.get("SERVICE_ROLE_KEY") ?? "";
 const openRouterKey = Deno.env.get("OPENROUTER_API_KEY") ?? "";
+const sanitizedOpenRouterKey = openRouterKey
+  .trim()
+  .replace(/^Bearer\s+/i, "")
+  .replace(/^['"]|['"]$/g, "");
 
 const supabase = supabaseUrl && serviceRoleKey
   ? createClient(supabaseUrl, serviceRoleKey, {
@@ -59,20 +67,28 @@ const formatDate = (value?: string) => {
   return parsed.toISOString().slice(0, 10);
 };
 
+const trimText = (value: string | undefined, maxLength: number) => {
+  const text = String(value || "").trim();
+  if (!text) {
+    return "";
+  }
+  return text.length > maxLength ? text.slice(0, maxLength) : text;
+};
+
 const normalizeItem = (item: SearchItem) => {
   const tags = Array.isArray(item.tags)
-    ? item.tags.map((tag) => String(tag).trim()).filter(Boolean)
+    ? item.tags.map((tag) => String(tag).trim()).filter(Boolean).slice(0, MAX_TAGS)
     : [];
   return {
-    title: String(item.title || "").trim(),
-    description: String(item.description || "").trim(),
+    title: trimText(item.title, MAX_TITLE_CHARS),
+    description: trimText(item.description, MAX_DESCRIPTION_CHARS),
     tags,
-    category: String(item.category || "").trim(),
-    type: String(item.type || "").trim(),
-    date: String(item.date || "").trim(),
-    href: String(item.href || "").trim(),
-    source: String(item.source || "").trim(),
-    language: String(item.language || "").trim(),
+    category: trimText(item.category, 48),
+    type: trimText(item.type, 32),
+    date: trimText(item.date, 40),
+    href: trimText(item.href, 300),
+    source: trimText(item.source, 60),
+    language: trimText(item.language, 40),
   };
 };
 
@@ -85,9 +101,13 @@ const buildContext = (items: ReturnType<typeof normalizeItem>[]) =>
         item.date ? formatDate(item.date) : null,
       ].filter(Boolean);
       const metaLine = metaParts.length ? ` (${metaParts.join(" · ")})` : "";
-      const tagsLine = item.tags.length ? `tags: ${item.tags.join(", ")}` : "tags: none";
-      const description = item.description || "No description.";
-      return `${index + 1}. ${item.title}${metaLine}\n${description}\n${tagsLine}\nurl: ${item.href}`;
+      const lines = [
+        `${index + 1}. ${item.title}${metaLine}`,
+        item.description || null,
+        item.tags.length ? `tags: ${item.tags.join(", ")}` : null,
+        item.href ? `url: ${item.href}` : null,
+      ].filter(Boolean);
+      return lines.join("\n");
     })
     .join("\n\n");
 
@@ -95,9 +115,8 @@ const buildMessages = (question: string, items: ReturnType<typeof normalizeItem>
   {
     role: "system",
     content:
-      "You are the Ruflo site search assistant. Answer using only the provided content items. " +
-      "If the answer is not in the items, say you do not know and suggest trying a different search. " +
-      "Be concise and factual.",
+      "Answer using only the provided items. Cite sources with bracketed numbers like [1] that match the item list. " +
+      "If the answer is not in the items, say you could not find it. Keep it concise and factual.",
   },
   {
     role: "user",
@@ -120,7 +139,7 @@ serve(async (req) => {
     return jsonResponse({ error: "Method not allowed." }, 405);
   }
 
-  if (!openRouterKey) {
+  if (!sanitizedOpenRouterKey) {
     return jsonResponse({ error: "Missing OpenRouter API key." }, 500);
   }
 
@@ -166,7 +185,7 @@ serve(async (req) => {
   const response = await fetch(OPENROUTER_ENDPOINT, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${openRouterKey}`,
+      Authorization: `Bearer ${sanitizedOpenRouterKey}`,
       "Content-Type": "application/json",
       "HTTP-Referer": req.headers.get("origin") || "",
       "X-Title": "Ruflo Site Search",
@@ -174,7 +193,7 @@ serve(async (req) => {
     body: JSON.stringify({
       model: OPENROUTER_MODEL,
       temperature: 0.2,
-      max_tokens: 450,
+      max_tokens: 240,
       messages: buildMessages(question, items),
     }),
   });
