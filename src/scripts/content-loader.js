@@ -1152,6 +1152,14 @@ const initSearchAi = ({ indexItems, input }) => {
     return;
   }
 
+  if (section.hasAttribute('data-search-ai-disabled')) {
+    const status = section.querySelector('[data-search-ai-status]');
+    if (status && !status.textContent) {
+      status.textContent = 'Search AI is temporarily unavailable.';
+    }
+    return;
+  }
+
   const aiInput = section.querySelector('[data-search-ai-input]');
   const card = section.querySelector('[data-search-ai-card]');
   const runButton = section.querySelector('[data-search-ai-run]');

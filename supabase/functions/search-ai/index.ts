@@ -26,6 +26,9 @@ const MAX_CONTEXT_ITEMS = 5;
 const MAX_TITLE_CHARS = 120;
 const MAX_DESCRIPTION_CHARS = 240;
 const MAX_TAGS = 4;
+const SITE_SCOPE_HINTS = /(this site|on this site|website|site|blog|posts?|news links?|projects?|here|on the site)/i;
+const CURRENT_EVENTS_HINTS = /(today'?s news|latest news|breaking news|current events|top stories|headlines|world news|market news|stock market|sports news|weather)/i;
+const WEB_BROWSING_HINTS = /(internet|online|google|search the web|browse the web|web search)/i;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -105,7 +108,6 @@ const buildContext = (items: ReturnType<typeof normalizeItem>[]) =>
         `${index + 1}. ${item.title}${metaLine}`,
         item.description || null,
         item.tags.length ? `tags: ${item.tags.join(", ")}` : null,
-        item.href ? `url: ${item.href}` : null,
       ].filter(Boolean);
       return lines.join("\n");
     })
@@ -115,14 +117,32 @@ const buildMessages = (question: string, items: ReturnType<typeof normalizeItem>
   {
     role: "system",
     content:
-      "Answer using only the provided items. Cite sources with bracketed numbers like [1] that match the item list. " +
-      "If the answer is not in the items, say you could not find it. Keep it concise and factual.",
+      "You are a site content assistant. Answer using only the provided items and only when the question is about the website content. " +
+      "Do not answer general knowledge or external questions. Cite sources with bracketed numbers like [1] that match the item list. " +
+      "Do not include URLs, access paths, or a Sources section in the answer; the UI renders sources separately. " +
+      "Never claim to browse or check the internet. If the answer is not in the items or the question is out of scope, " +
+      "say you could not find it in the site content. Keep it concise and factual.",
   },
   {
     role: "user",
     content: `Question: ${question}\n\nContent items:\n${buildContext(items)}`,
   },
 ];
+
+const isOutOfScopeQuestion = (question: string) => {
+  const normalized = question.toLowerCase();
+  const hasSiteScope = SITE_SCOPE_HINTS.test(normalized);
+
+  if (WEB_BROWSING_HINTS.test(normalized)) {
+    return true;
+  }
+
+  if (CURRENT_EVENTS_HINTS.test(normalized) && !hasSiteScope) {
+    return true;
+  }
+
+  return false;
+};
 
 const getClientIp = (req: Request) =>
   req.headers.get("x-forwarded-for") ||
@@ -180,6 +200,14 @@ serve(async (req) => {
 
   if (logError) {
     return jsonResponse({ error: "Failed to log the query." }, 500);
+  }
+
+  if (isOutOfScopeQuestion(question)) {
+    return jsonResponse({
+      answer:
+        "I can only answer questions about this site's content (posts, news links, and projects). " +
+        "I don't browse the internet or provide live news.",
+    });
   }
 
   const response = await fetch(OPENROUTER_ENDPOINT, {

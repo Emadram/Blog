@@ -1134,28 +1134,39 @@ const renderSearchAiQueries = () => {
     return;
   }
 
+  const buildQueryCell = (label, value, { isQuestion = false } = {}) => {
+    const cell = document.createElement("div");
+    cell.className = "query-grid-cell";
+    if (isQuestion) {
+      cell.classList.add("is-question");
+    }
+
+    const key = document.createElement("span");
+    key.className = "query-grid-label";
+    key.textContent = label;
+
+    const val = document.createElement("span");
+    val.className = "query-grid-value";
+    val.textContent = value;
+
+    cell.appendChild(key);
+    cell.appendChild(val);
+    return cell;
+  };
+
   state.items.searchAiQueries.forEach((entry) => {
     const row = document.createElement("div");
-    row.className = "activity-item";
+    row.className = "activity-item query-grid";
 
-    const title = document.createElement("div");
-    title.className = "activity-title";
-    title.textContent = entry.question || "Untitled question";
+    const question = entry.question || "Untitled question";
+    const askedAt = entry.created_at ? formatDateTime(entry.created_at) : "Unknown";
+    const ip = entry.ip || "Unknown";
+    const userAgent = entry.user_agent || "Unknown";
 
-    const meta = document.createElement("div");
-    meta.className = "activity-meta";
-    meta.textContent = joinMeta([
-      formatDateTime(entry.created_at),
-      entry.ip ? `IP ${entry.ip}` : null,
-    ]);
-
-    const userAgent = document.createElement("div");
-    userAgent.className = "query-user-agent";
-    userAgent.textContent = entry.user_agent || "Unknown user agent";
-
-    row.appendChild(title);
-    row.appendChild(meta);
-    row.appendChild(userAgent);
+    row.appendChild(buildQueryCell("Question", question, { isQuestion: true }));
+    row.appendChild(buildQueryCell("Asked", askedAt));
+    row.appendChild(buildQueryCell("IP", ip));
+    row.appendChild(buildQueryCell("User agent", userAgent));
     list.appendChild(row);
   });
 };
