@@ -2049,16 +2049,16 @@ const autoFillNewsFromUrl = async ({ form, force = false } = {}) => {
 
     lastNewsAutofillUrl = normalizedUrl || url;
 
-    if (titleInput && data.title) {
+    if (titleInput && !titleInput.value.trim() && data.title) {
       titleInput.value = data.title;
     }
-    if (sourceInput && data.source) {
+    if (sourceInput && !sourceInput.value.trim() && data.source) {
       sourceInput.value = data.source;
     }
-    if (summaryInput && data.summary) {
+    if (summaryInput && !summaryInput.value.trim() && data.summary) {
       summaryInput.value = data.summary;
     }
-    if (publishedInput && data.published_at) {
+    if (publishedInput && !publishedInput.value && data.published_at) {
       publishedInput.value = toInputDateTime(data.published_at);
     }
 
@@ -2109,9 +2109,23 @@ const handleNewsSubmit = async (event) => {
     category: form.querySelector("[name=\"category\"]").value.trim() || null,
   };
 
-  setStatus("Saving link...", "info");
-  const query = id
-    ? supabase.from("news").update(payload).eq("id", id).select().single()
+  let targetId = id;
+  if (!targetId && url) {
+    const { data: existing, error: lookupError } = await supabase
+      .from("news")
+      .select("id")
+      .eq("url", url)
+      .maybeSingle();
+    if (lookupError) {
+      setStatus(`Lookup failed: ${lookupError.message}`, "error");
+      return;
+    }
+    targetId = existing?.id || "";
+  }
+
+  setStatus(targetId ? "Updating link..." : "Saving link...", "info");
+  const query = targetId
+    ? supabase.from("news").update(payload).eq("id", targetId).select().single()
     : supabase.from("news").insert(payload).select().single();
 
   const { data, error } = await query;
