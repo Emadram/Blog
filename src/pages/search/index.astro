@@ -106,15 +106,20 @@ const baseUrl = import.meta.env.BASE_URL;
       </div>
 
       <div
-        class="mt-4 hidden rounded-2xl border border-slate-200 bg-white/80 p-4 text-sm text-slate-700 dark:border-slate-800/60 dark:bg-slate-950/40 dark:text-slate-200"
-        data-search-ai-response
+        class="mt-4 hidden rounded-2xl border border-slate-200 bg-white/80 p-4 dark:border-slate-800/60 dark:bg-slate-950/40"
+        data-search-ai-card
         role="status"
         aria-live="polite"
-      ></div>
-      <div
-        class="mt-3 hidden rounded-2xl border border-slate-200 bg-white/70 p-4 text-xs text-slate-600 dark:border-slate-800/60 dark:bg-slate-950/30 dark:text-slate-300"
-        data-search-ai-sources
-      ></div>
+      >
+        <div
+          class="prose max-w-none text-sm text-slate-700 dark:prose-invert dark:text-slate-200"
+          data-search-ai-response
+        ></div>
+        <div
+          class="mt-4 border-t border-slate-200 pt-3 text-xs text-slate-600 dark:border-slate-800/60 dark:text-slate-300"
+          data-search-ai-sources
+        ></div>
+      </div>
     </section>
 
     <div class="space-y-4" data-search-results aria-live="polite" aria-busy="false">

@@ -16,7 +16,7 @@ const SUPABASE_KEY = import.meta.env.PUBLIC_SUPABASE_ANON_KEY;
 const CACHE_TTL_MS = 60 * 1000;
 const CACHE_BUST_PARAM = 'fresh';
 const SEARCH_AI_FUNCTION = 'search-ai';
-const SEARCH_AI_MAX_ITEMS = 8;
+const SEARCH_AI_MAX_ITEMS = 5;
 const memoryCache = new Map();
 
 const canUseSessionStorage = () => typeof sessionStorage !== 'undefined';
@@ -649,9 +649,17 @@ const getLatestItems = (items, limit = 8) =>
     })
     .slice(0, limit);
 
+const trimText = (value, maxLength) => {
+  const text = String(value || '').trim();
+  if (!text) {
+    return '';
+  }
+  return text.length > maxLength ? text.slice(0, maxLength) : text;
+};
+
 const serializeAiItem = (item) => ({
-  title: item.title,
-  description: item.description,
+  title: trimText(item.title, 120),
+  description: trimText(item.description, 240),
   tags: item.tags,
   category: item.category,
   type: item.type,
@@ -706,9 +714,13 @@ const renderAiSources = (container, items) => {
   const list = document.createElement('div');
   list.className = 'mt-2 grid gap-2';
 
-  items.forEach((item) => {
+  items.forEach((item, index) => {
     const row = document.createElement('div');
-    row.className = 'flex flex-wrap items-center gap-2 text-sm';
+    row.className = 'flex flex-wrap items-center gap-2 text-xs';
+
+    const badge = document.createElement('span');
+    badge.className = 'text-[0.65rem] uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500';
+    badge.textContent = `[${index + 1}]`;
 
     const link = document.createElement('a');
     link.href = item.href;
@@ -723,6 +735,7 @@ const renderAiSources = (container, items) => {
     meta.className = 'text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400';
     meta.textContent = getSearchMeta(item);
 
+    row.appendChild(badge);
     row.appendChild(link);
     row.appendChild(meta);
     list.appendChild(row);
@@ -1140,13 +1153,14 @@ const initSearchAi = ({ indexItems, input }) => {
   }
 
   const aiInput = section.querySelector('[data-search-ai-input]');
+  const card = section.querySelector('[data-search-ai-card]');
   const runButton = section.querySelector('[data-search-ai-run]');
   const clearButton = section.querySelector('[data-search-ai-clear]');
   const status = section.querySelector('[data-search-ai-status]');
   const response = section.querySelector('[data-search-ai-response]');
   const sources = section.querySelector('[data-search-ai-sources]');
 
-  if (!aiInput || !runButton || !status || !response) {
+  if (!aiInput || !runButton || !status || !response || !card) {
     return;
   }
 
@@ -1154,17 +1168,29 @@ const initSearchAi = ({ indexItems, input }) => {
     status.textContent = message || '';
   };
 
-  const showResponse = (message) => {
-    response.textContent = message || '';
-    response.classList.toggle('hidden', !message);
+  const setCardVisible = (visible) => {
+    card.classList.toggle('hidden', !visible);
+    card.setAttribute('aria-hidden', String(!visible));
+  };
+
+  const showResponse = async (message) => {
+    if (!message) {
+      response.innerHTML = '';
+      setCardVisible(false);
+      return;
+    }
+    const marked = await loadMarked();
+    response.innerHTML = renderMarkdown(marked, message);
+    setCardVisible(true);
   };
 
   const resetResponse = () => {
-    showResponse('');
+    response.innerHTML = '';
     if (sources) {
       sources.innerHTML = '';
       sources.classList.add('hidden');
     }
+    setCardVisible(false);
   };
 
   if (input?.value && !aiInput.value) {
@@ -1205,7 +1231,7 @@ const initSearchAi = ({ indexItems, input }) => {
         runButton.disabled = false;
         return;
       }
-      showResponse(answer);
+      await showResponse(answer);
       renderAiSources(sources, contextItems);
       setStatus('');
     } catch (error) {
