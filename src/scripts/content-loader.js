@@ -382,7 +382,7 @@ const enhanceMarkdown = (html) => {
 
 const renderMarkdown = (markedInstance, value) => enhanceMarkdown(markedInstance.parse(value || ''));
 
-const setSectionState = (section, state) => {
+const setSectionState = (section, state, errorMessage) => {
   const skeleton = section.querySelector('[data-skeleton]');
   const list = section.querySelector('[data-list], [data-detail]');
   const empty = section.querySelector('[data-empty]');
@@ -402,7 +402,40 @@ const setSectionState = (section, state) => {
   setVisibility(list, state === 'ready');
   setVisibility(empty, state === 'empty');
   setVisibility(error, state === 'error');
+  if (error) {
+    if (!error.dataset.defaultText) {
+      error.dataset.defaultText = error.textContent || '';
+    }
+    if (state === 'error') {
+      error.textContent = errorMessage || error.dataset.defaultText || error.textContent;
+    } else if (error.dataset.defaultText) {
+      error.textContent = error.dataset.defaultText;
+    }
+  }
   section.setAttribute('aria-busy', state === 'loading' ? 'true' : 'false');
+};
+
+const getSupabaseErrorMessage = (resource, error) => {
+  const label = resource ? `Unable to load ${resource}.` : 'Unable to load content.';
+
+  if (!hasSupabaseConfig()) {
+    return `${label} Supabase config is missing for this build.`;
+  }
+
+  const message = String(error?.message || '');
+  const statusMatch = message.match(/\b(\d{3})\b/);
+  if (statusMatch) {
+    const status = statusMatch[1];
+    if (status === '401' || status === '403') {
+      return `${label} Supabase request denied (${status}). Check RLS for anon access.`;
+    }
+    if (status === '404') {
+      return `${label} Supabase endpoint not found (404). Check PUBLIC_SUPABASE_URL.`;
+    }
+    return `${label} Supabase request failed (${status}).`;
+  }
+
+  return `${label} Supabase request failed.`;
 };
 
 const renderTags = (container, tags, category) => {
@@ -830,9 +863,9 @@ export const initHome = async () => {
   }
 
   if (!hasSupabaseConfig()) {
-    setSectionState(postsSection, 'error');
-    setSectionState(newsSection, 'error');
-    setSectionState(projectsSection, 'error');
+    setSectionState(postsSection, 'error', getSupabaseErrorMessage('posts'));
+    setSectionState(newsSection, 'error', getSupabaseErrorMessage('news'));
+    setSectionState(projectsSection, 'error', getSupabaseErrorMessage('projects'));
     return;
   }
 
@@ -876,7 +909,7 @@ export const initHome = async () => {
       setSectionState(postsSection, 'ready');
     }
   } else {
-    setSectionState(postsSection, 'error');
+    setSectionState(postsSection, 'error', getSupabaseErrorMessage('posts', postsResult.reason));
   }
 
   if (newsResult.status === 'fulfilled') {
@@ -919,7 +952,7 @@ export const initHome = async () => {
       setSectionState(newsSection, 'ready');
     }
   } else {
-    setSectionState(newsSection, 'error');
+    setSectionState(newsSection, 'error', getSupabaseErrorMessage('news', newsResult.reason));
   }
 
   if (projectsResult.status === 'fulfilled') {
@@ -968,7 +1001,7 @@ export const initHome = async () => {
       setSectionState(projectsSection, 'ready');
     }
   } else {
-    setSectionState(projectsSection, 'error');
+    setSectionState(projectsSection, 'error', getSupabaseErrorMessage('projects', projectsResult.reason));
   }
 };
 
@@ -979,7 +1012,7 @@ export const initNewsPage = async () => {
   }
 
   if (!hasSupabaseConfig()) {
-    setSectionState(section, 'error');
+    setSectionState(section, 'error', getSupabaseErrorMessage('news'));
     return;
   }
 
@@ -1022,7 +1055,7 @@ export const initNewsPage = async () => {
       setSectionState(section, 'ready');
     }
   } catch (error) {
-    setSectionState(section, 'error');
+    setSectionState(section, 'error', getSupabaseErrorMessage('news', error));
   }
 };
 
@@ -1033,7 +1066,7 @@ export const initProjectsPage = async () => {
   }
 
   if (!hasSupabaseConfig()) {
-    setSectionState(section, 'error');
+    setSectionState(section, 'error', getSupabaseErrorMessage('projects'));
     return;
   }
 
@@ -1082,7 +1115,7 @@ export const initProjectsPage = async () => {
       setSectionState(section, 'ready');
     }
   } catch (error) {
-    setSectionState(section, 'error');
+    setSectionState(section, 'error', getSupabaseErrorMessage('projects', error));
   }
 };
 
@@ -1259,8 +1292,9 @@ export const initBlogPage = async () => {
   }
 
   if (!hasSupabaseConfig()) {
-    setSectionState(listSection, 'error');
-    setSectionState(detailSection, 'error');
+    const message = getSupabaseErrorMessage('posts');
+    setSectionState(listSection, 'error', message);
+    setSectionState(detailSection, 'error', message);
     return;
   }
 
@@ -1275,7 +1309,7 @@ export const initBlogPage = async () => {
       setSectionState(detailSection, 'loading');
       const post = previewToken ? await fetchPostPreview(previewToken) : await fetchPostBySlug(slug);
       if (!post) {
-        setSectionState(detailSection, 'error');
+        setSectionState(detailSection, 'error', 'Unable to load post. It may be unpublished or missing.');
         return;
       }
 
@@ -1316,7 +1350,7 @@ export const initBlogPage = async () => {
       await renderRelatedSection(post, detailSection);
       setSectionState(detailSection, 'ready');
     } catch (error) {
-      setSectionState(detailSection, 'error');
+      setSectionState(detailSection, 'error', getSupabaseErrorMessage('post', error));
     }
 
     return;
@@ -1356,7 +1390,7 @@ export const initBlogPage = async () => {
       setSectionState(listSection, 'ready');
     }
   } catch (error) {
-    setSectionState(listSection, 'error');
+    setSectionState(listSection, 'error', getSupabaseErrorMessage('posts', error));
   }
 };
 
@@ -1376,7 +1410,7 @@ export const initSearchPage = async () => {
   }
 
   if (!hasSupabaseConfig()) {
-    setSectionState(resultsSection, 'error');
+    setSectionState(resultsSection, 'error', getSupabaseErrorMessage('search results'));
     return;
   }
 
@@ -1386,7 +1420,7 @@ export const initSearchPage = async () => {
   try {
     indexItems = await buildSearchIndex();
   } catch (error) {
-    setSectionState(resultsSection, 'error');
+    setSectionState(resultsSection, 'error', getSupabaseErrorMessage('search results', error));
     return;
   }
 
