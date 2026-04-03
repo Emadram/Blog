@@ -66,6 +66,7 @@
           <nav class="tabs surface" aria-label="Content sections">
             <button class="tab active" type="button" data-tab="posts">Posts</button>
             <button class="tab" type="button" data-tab="news">News</button>
+            <button class="tab" type="button" data-tab="topics">Talk</button>
             <button class="tab" type="button" data-tab="projects">Projects</button>
             <button class="tab" type="button" data-tab="activity">Activity</button>
           </nav>
@@ -388,6 +389,92 @@
                       <button class="button ghost" type="button" data-delete="news">Delete</button>
                     </div>
                   </form>
+                </div>
+              </div>
+            </section>
+
+            <section class="resource hidden" data-resource="topics">
+              <div class="resource-header">
+                <div>
+                  <p class="eyebrow">Talk</p>
+                  <h2>Anonymous topics</h2>
+                  <p class="muted">Moderate, archive, and manage conversations.</p>
+                </div>
+                <button class="button" type="button" data-new="topics">New topic</button>
+              </div>
+              <div class="resource-body">
+                <div class="resource-list surface">
+                  <div class="list-toolbar">
+                    <div class="filter-row" role="tablist" aria-label="Topic status filters">
+                      <button class="filter-chip active" type="button" data-topic-filter="open" aria-pressed="true">
+                        Open
+                      </button>
+                      <button class="filter-chip" type="button" data-topic-filter="archived" aria-pressed="false">
+                        Archived
+                      </button>
+                      <button class="filter-chip" type="button" data-topic-filter="all" aria-pressed="false">
+                        All
+                      </button>
+                    </div>
+                  </div>
+                  <div class="list-items" data-list="topics"></div>
+                </div>
+                <div class="resource-editor">
+                  <form class="resource-form surface" data-form="topics">
+                    <input type="hidden" name="id" />
+                    <div class="field">
+                      <label for="topic-title">Title</label>
+                      <input id="topic-title" name="title" type="text" required />
+                    </div>
+                    <div class="field">
+                      <label for="topic-slug">Slug</label>
+                      <input id="topic-slug" name="slug" type="text" required />
+                    </div>
+                    <div class="field">
+                      <label for="topic-author">Author</label>
+                      <input id="topic-author" name="author_name" type="text" />
+                    </div>
+                    <div class="field">
+                      <label for="topic-body">Body</label>
+                      <textarea id="topic-body" name="body" rows="6" required></textarea>
+                    </div>
+                    <div class="field-grid two">
+                      <div class="field">
+                        <label for="topic-status">Status</label>
+                        <select id="topic-status" name="status">
+                          <option value="open">Open</option>
+                          <option value="archived">Archived</option>
+                        </select>
+                      </div>
+                      <div class="field checkbox">
+                        <label>
+                          <input name="is_locked" type="checkbox" />
+                          Locked
+                        </label>
+                      </div>
+                    </div>
+                    <div class="field checkbox">
+                      <label>
+                        <input name="is_unlisted" type="checkbox" />
+                        Unlisted
+                      </label>
+                    </div>
+                    <div class="form-actions">
+                      <button class="button accent" type="submit">Save topic</button>
+                      <button class="button ghost" type="button" data-delete="topics">Delete</button>
+                    </div>
+                  </form>
+                  <div class="resource-list surface">
+                    <div class="list-toolbar">
+                      <div class="schedule-header">
+                        <div>
+                          <p class="eyebrow">Replies</p>
+                          <p class="muted">Hide or restore replies.</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="list-items" data-list="topic-comments"></div>
+                  </div>
                 </div>
               </div>
             </section>

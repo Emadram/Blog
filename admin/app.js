@@ -14,12 +14,15 @@ const dom = {
   resources: {
     posts: document.querySelector('[data-resource="posts"]'),
     news: document.querySelector('[data-resource="news"]'),
+    topics: document.querySelector('[data-resource="topics"]'),
     projects: document.querySelector('[data-resource="projects"]'),
     activity: document.querySelector('[data-resource="activity"]'),
   },
   lists: {
     posts: document.querySelector('[data-list="posts"]'),
     news: document.querySelector('[data-list="news"]'),
+    topics: document.querySelector('[data-list="topics"]'),
+    topicComments: document.querySelector('[data-list="topic-comments"]'),
     projects: document.querySelector('[data-list="projects"]'),
     activity: document.querySelector('[data-list="activity"]'),
     searchAiQueries: document.querySelector('[data-list="search-ai-queries"]'),
@@ -28,16 +31,19 @@ const dom = {
   forms: {
     posts: document.querySelector('[data-form="posts"]'),
     news: document.querySelector('[data-form="news"]'),
+    topics: document.querySelector('[data-form="topics"]'),
     projects: document.querySelector('[data-form="projects"]'),
   },
   newButtons: {
     posts: document.querySelector('[data-new="posts"]'),
     news: document.querySelector('[data-new="news"]'),
+    topics: document.querySelector('[data-new="topics"]'),
     projects: document.querySelector('[data-new="projects"]'),
   },
   deleteButtons: {
     posts: document.querySelector('[data-delete="posts"]'),
     news: document.querySelector('[data-delete="news"]'),
+    topics: document.querySelector('[data-delete="topics"]'),
     projects: document.querySelector('[data-delete="projects"]'),
   },
   publishNow: document.querySelector('[data-publish-now]'),
@@ -82,6 +88,7 @@ const dom = {
   refreshActivity: document.querySelector('[data-refresh-activity]'),
   activityResourceFilters: Array.from(document.querySelectorAll('[data-activity-resource]')),
   activityActionFilters: Array.from(document.querySelectorAll('[data-activity-action]')),
+  topicFilters: Array.from(document.querySelectorAll('[data-topic-filter]')),
   scheduledQueue: document.querySelector('[data-scheduled-queue]'),
   scheduleReminder: document.querySelector('[data-schedule-reminder]'),
   cleanPreviews: document.querySelector('[data-clean-previews]'),
@@ -107,6 +114,8 @@ const state = {
   items: {
     posts: [],
     news: [],
+    topics: [],
+    topicComments: [],
     projects: [],
     activity: [],
     searchAiQueries: [],
@@ -115,6 +124,7 @@ const state = {
   selected: {
     posts: null,
     news: null,
+    topics: null,
     projects: null,
   },
   session: null,
@@ -126,8 +136,11 @@ const state = {
   visiblePostIds: [],
   selectedNewsIds: new Set(),
   visibleNewsIds: [],
+  selectedTopicIds: new Set(),
+  visibleTopicIds: [],
   selectedProjectIds: new Set(),
   visibleProjectIds: [],
+  topicFilter: "open",
   activityFilters: {
     resource: "all",
     action: "all",
@@ -663,6 +676,26 @@ const setPostFilter = (filter) => {
   renderPostsList();
 };
 
+const applyTopicFilter = (topics) => {
+  if (!Array.isArray(topics)) {
+    return [];
+  }
+  if (state.topicFilter === "all") {
+    return topics;
+  }
+  return topics.filter((topic) => topic.status === state.topicFilter);
+};
+
+const setTopicFilter = (filter) => {
+  state.topicFilter = filter;
+  dom.topicFilters.forEach((button) => {
+    const isActive = button.dataset.topicFilter === filter;
+    button.classList.toggle("active", isActive);
+    button.setAttribute("aria-pressed", String(isActive));
+  });
+  renderTopicsList();
+};
+
 const setActivityFilter = (type, value) => {
   if (type === "resource") {
     state.activityFilters.resource = value;
@@ -1080,6 +1113,96 @@ const renderProjectsList = () => {
   updateProjectsSelectionUI();
 };
 
+const renderTopicsList = () => {
+  const list = dom.lists.topics;
+  if (!list) {
+    return;
+  }
+  list.innerHTML = "";
+  const visibleTopics = applyTopicFilter(state.items.topics);
+  state.visibleTopicIds = visibleTopics.map((topic) => topic.id);
+  if (!visibleTopics.length) {
+    const empty = document.createElement("p");
+    empty.className = "list-empty";
+    empty.textContent = "No topics yet.";
+    list.appendChild(empty);
+    return;
+  }
+
+  visibleTopics.forEach((topic) => {
+    const statusLabel = topic.status === "archived" ? "Archived" : "Open";
+    const flags = [
+      topic.is_locked ? "Locked" : null,
+      topic.is_unlisted ? "Unlisted" : null,
+    ].filter(Boolean);
+    const meta = joinMeta([
+      statusLabel,
+      flags.length ? flags.join(", ") : null,
+      formatDateTime(topic.last_activity_at || topic.created_at),
+    ]);
+    const row = buildSelectableListItem({
+      id: topic.id,
+      title: topic.title,
+      meta,
+      isActive: state.selected.topics?.id === topic.id,
+      isSelected: state.selectedTopicIds.has(topic.id),
+      selectLabel: `Select ${topic.title || "topic"}`,
+    });
+    list.appendChild(row);
+  });
+};
+
+const renderTopicComments = () => {
+  const list = dom.lists.topicComments;
+  if (!list) {
+    return;
+  }
+  list.innerHTML = "";
+  const comments = state.items.topicComments;
+  if (!comments.length) {
+    const empty = document.createElement("p");
+    empty.className = "list-empty";
+    empty.textContent = "No replies yet.";
+    list.appendChild(empty);
+    return;
+  }
+
+  comments.forEach((comment) => {
+    const row = document.createElement("div");
+    row.className = "comment-item";
+
+    const meta = document.createElement("div");
+    meta.className = "comment-meta";
+    const status = comment.is_hidden ? "Hidden" : "Visible";
+    meta.textContent = joinMeta([
+      comment.author_name || "Anon",
+      formatDateTime(comment.created_at),
+      status,
+    ]);
+
+    const body = document.createElement("div");
+    body.className = "comment-body";
+    body.textContent = comment.body || "";
+
+    const actions = document.createElement("div");
+    actions.className = "comment-actions";
+
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "button ghost";
+    toggle.textContent = comment.is_hidden ? "Unhide" : "Hide";
+    toggle.addEventListener("click", () => {
+      toggleTopicComment(comment.id, !comment.is_hidden);
+    });
+
+    actions.appendChild(toggle);
+    row.appendChild(meta);
+    row.appendChild(body);
+    row.appendChild(actions);
+    list.appendChild(row);
+  });
+};
+
 const getActivityLabel = (entry) => {
   const resourceMap = {
     posts: "post",
@@ -1300,6 +1423,42 @@ const loadProjects = async () => {
   refreshSelectedProjects();
 };
 
+const loadTopics = async () => {
+  if (!supabase) {
+    return;
+  }
+  const { data, error } = await supabase
+    .from("topics")
+    .select("*")
+    .order("last_activity_at", { ascending: false });
+
+  if (error) {
+    setStatus(`Topics failed to load: ${error.message}`, "error");
+    return;
+  }
+  state.items.topics = data || [];
+  renderTopicsList();
+  refreshSelectedTopic();
+};
+
+const loadTopicComments = async (topicId) => {
+  if (!supabase || !topicId) {
+    return;
+  }
+  const { data, error } = await supabase
+    .from("topic_comments")
+    .select("*")
+    .eq("topic_id", topicId)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    setStatus(`Comments failed to load: ${error.message}`, "error");
+    return;
+  }
+  state.items.topicComments = data || [];
+  renderTopicComments();
+};
+
 const loadActivity = async () => {
   if (!supabase) {
     return;
@@ -1425,6 +1584,19 @@ const refreshSelectedProjects = () => {
     fillProjectsForm(updated);
   } else {
     resetProjectsForm();
+  }
+};
+
+const refreshSelectedTopic = () => {
+  if (!state.selected.topics) {
+    return;
+  }
+  const updated = state.items.topics.find((topic) => topic.id === state.selected.topics.id);
+  if (updated) {
+    state.selected.topics = updated;
+    fillTopicForm(updated);
+  } else {
+    resetTopicForm();
   }
 };
 
@@ -1563,6 +1735,20 @@ const resetProjectsForm = () => {
   renderProjectsList();
 };
 
+const resetTopicForm = () => {
+  const form = dom.forms.topics;
+  if (!form) {
+    return;
+  }
+  form.reset();
+  form.querySelector("[name=\"id\"]").value = "";
+  state.selected.topics = null;
+  state.selectedTopicIds.clear();
+  state.items.topicComments = [];
+  renderTopicsList();
+  renderTopicComments();
+};
+
 const fillPostForm = (post) => {
   const form = dom.forms.posts;
   if (!form) {
@@ -1628,6 +1814,23 @@ const fillProjectsForm = (item) => {
       : "";
   }
   renderProjectsList();
+};
+
+const fillTopicForm = (topic) => {
+  const form = dom.forms.topics;
+  if (!form) {
+    return;
+  }
+  form.querySelector("[name=\"id\"]").value = topic?.id || "";
+  form.querySelector("[name=\"title\"]").value = topic?.title || "";
+  form.querySelector("[name=\"slug\"]").value = topic?.slug || "";
+  form.querySelector("[name=\"author_name\"]").value = topic?.author_name || "";
+  form.querySelector("[name=\"body\"]").value = topic?.body || "";
+  form.querySelector("[name=\"status\"]").value = topic?.status || "open";
+  form.querySelector("[name=\"is_locked\"]").checked = Boolean(topic?.is_locked);
+  form.querySelector("[name=\"is_unlisted\"]").checked = Boolean(topic?.is_unlisted);
+  renderTopicsList();
+  loadTopicComments(topic?.id);
 };
 
 const updatePostPreview = () => {
@@ -1788,9 +1991,59 @@ const savePost = async () => {
   fillPostForm(data);
 };
 
+const saveTopic = async () => {
+  if (!supabase) {
+    return;
+  }
+  const form = dom.forms.topics;
+  if (!form) {
+    return;
+  }
+  const id = form.querySelector("[name=\"id\"]").value.trim();
+  const title = form.querySelector("[name=\"title\"]").value.trim();
+  const slug = form.querySelector("[name=\"slug\"]").value.trim();
+  const body = form.querySelector("[name=\"body\"]").value.trim();
+
+  if (!title || !slug || !body) {
+    setStatus("Title, slug, and body are required.", "error");
+    return;
+  }
+
+  const payload = {
+    title,
+    slug,
+    body,
+    author_name: form.querySelector("[name=\"author_name\"]").value.trim() || null,
+    status: form.querySelector("[name=\"status\"]").value || "open",
+    is_locked: form.querySelector("[name=\"is_locked\"]").checked,
+    is_unlisted: form.querySelector("[name=\"is_unlisted\"]").checked,
+  };
+
+  setStatus("Saving topic...", "info");
+  const query = id
+    ? supabase.from("topics").update(payload).eq("id", id).select().single()
+    : supabase.from("topics").insert(payload).select().single();
+
+  const { data, error } = await query;
+  if (error) {
+    setStatus(`Save failed: ${error.message}`, "error");
+    return;
+  }
+
+  setStatus("Topic saved.", "success");
+  await loadTopics();
+  state.selected.topics = data;
+  fillTopicForm(data);
+};
+
 const handlePostSubmit = async (event) => {
   event.preventDefault();
   await savePost();
+};
+
+const handleTopicSubmit = async (event) => {
+  event.preventDefault();
+  await saveTopic();
 };
 
 const handlePublishNow = async () => {
@@ -2058,6 +2311,23 @@ const handleProjectsBulkDelete = async () => {
   setStatus("Selected projects deleted.", "success");
 };
 
+const toggleTopicComment = async (commentId, hide) => {
+  if (!supabase || !commentId) {
+    return;
+  }
+  setStatus(hide ? "Hiding comment..." : "Restoring comment...", "info");
+  const { error } = await supabase
+    .from("topic_comments")
+    .update({ is_hidden: hide })
+    .eq("id", commentId);
+  if (error) {
+    setStatus(`Comment update failed: ${error.message}`, "error");
+    return;
+  }
+  await loadTopicComments(state.selected.topics?.id);
+  setStatus(hide ? "Comment hidden." : "Comment restored.", "success");
+};
+
 const autoFillNewsFromUrl = async ({ form, force = false } = {}) => {
   if (!supabase || !form) {
     return null;
@@ -2262,6 +2532,7 @@ const handleDelete = async (resource) => {
   const labelMap = {
     posts: "post",
     news: "news link",
+    topics: "topic",
     projects: "project",
   };
   const confirmed = window.confirm(`Delete this ${labelMap[resource] || "entry"}?`);
@@ -2287,6 +2558,10 @@ const handleDelete = async (resource) => {
   if (resource === "projects") {
     await loadProjects();
     resetProjectsForm();
+  }
+  if (resource === "topics") {
+    await loadTopics();
+    resetTopicForm();
   }
 };
 
@@ -2335,9 +2610,11 @@ const handleSession = async (session) => {
     state.previewTokens.clear();
     state.selectedPostIds.clear();
     state.selectedNewsIds.clear();
+    state.selectedTopicIds.clear();
     state.selectedProjectIds.clear();
     state.selected.posts = null;
     state.selected.news = null;
+    state.selected.topics = null;
     state.selected.projects = null;
     showAuth();
     return;
@@ -2359,6 +2636,7 @@ const handleSession = async (session) => {
   await Promise.all([
     loadPosts(),
     loadNews(),
+    loadTopics(),
     loadProjects(),
     loadActivity(),
     loadSearchAiQueries(),
@@ -2388,6 +2666,7 @@ const init = async () => {
 
   bindSelectableListEvents("posts", state.selectedPostIds, renderPostsList, fillPostForm);
   bindSelectableListEvents("news", state.selectedNewsIds, renderNewsList, fillNewsForm);
+  bindSelectableListEvents("topics", state.selectedTopicIds, renderTopicsList, fillTopicForm);
   bindSelectableListEvents("projects", state.selectedProjectIds, renderProjectsList, fillProjectsForm);
 
   dom.tabs.forEach((tab) => {
@@ -2396,10 +2675,12 @@ const init = async () => {
 
   dom.newButtons.posts?.addEventListener("click", resetPostForm);
   dom.newButtons.news?.addEventListener("click", resetNewsForm);
+  dom.newButtons.topics?.addEventListener("click", resetTopicForm);
   dom.newButtons.projects?.addEventListener("click", resetProjectsForm);
 
   dom.deleteButtons.posts?.addEventListener("click", () => handleDelete("posts"));
   dom.deleteButtons.news?.addEventListener("click", () => handleDelete("news"));
+  dom.deleteButtons.topics?.addEventListener("click", () => handleDelete("topics"));
   dom.deleteButtons.projects?.addEventListener("click", () => handleDelete("projects"));
 
   dom.publishNow?.addEventListener("click", handlePublishNow);
@@ -2540,9 +2821,13 @@ const init = async () => {
   dom.activityActionFilters.forEach((button) => {
     button.addEventListener("click", () => setActivityFilter("action", button.dataset.activityAction));
   });
+  dom.topicFilters.forEach((button) => {
+    button.addEventListener("click", () => setTopicFilter(button.dataset.topicFilter));
+  });
 
   dom.forms.posts?.addEventListener("submit", handlePostSubmit);
   dom.forms.news?.addEventListener("submit", handleNewsSubmit);
+  dom.forms.topics?.addEventListener("submit", handleTopicSubmit);
   dom.forms.projects?.addEventListener("submit", handleProjectsSubmit);
 
   const postTitle = dom.forms.posts?.querySelector("[name=\"title\"]");

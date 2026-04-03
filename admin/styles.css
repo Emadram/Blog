@@ -185,7 +185,8 @@ button {
 }
 
 .field input,
-.field textarea {
+.field textarea,
+.field select {
   border-radius: 12px;
   border: 1px solid var(--border);
   padding: 0.55rem 0.7rem;
@@ -195,7 +196,8 @@ button {
 }
 
 .field input:focus,
-.field textarea:focus {
+.field textarea:focus,
+.field select:focus {
   outline: none;
   border-color: rgba(11, 107, 107, 0.45);
   box-shadow: 0 0 0 3px rgba(11, 107, 107, 0.12);
@@ -685,6 +687,33 @@ button {
   text-transform: uppercase;
   letter-spacing: 0.18em;
   color: var(--muted);
+}
+
+.comment-item {
+  display: grid;
+  gap: 0.4rem;
+  border-radius: 14px;
+  border: 1px solid transparent;
+  padding: 0.6rem 0.75rem;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.comment-meta {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--muted);
+}
+
+.comment-body {
+  font-size: 0.9rem;
+  white-space: pre-wrap;
+}
+
+.comment-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
 }
 
 .query-grid {

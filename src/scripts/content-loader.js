@@ -17,6 +17,8 @@ const CACHE_TTL_MS = 60 * 1000;
 const CACHE_BUST_PARAM = 'fresh';
 const SEARCH_AI_FUNCTION = 'search-ai';
 const SEARCH_AI_MAX_ITEMS = 5;
+const TALK_TOPIC_FUNCTION = 'topic-submit';
+const TALK_COMMENT_FUNCTION = 'comment-submit';
 const memoryCache = new Map();
 
 const canUseSessionStorage = () => typeof sessionStorage !== 'undefined';
@@ -161,6 +163,27 @@ const mapProject = (row) => ({
   updatedAt: row.updated_at || null,
 });
 
+const mapTopic = (row) => ({
+  id: row.id,
+  title: row.title,
+  slug: row.slug,
+  body: row.body,
+  authorName: row.author_name || null,
+  status: row.status,
+  isLocked: Boolean(row.is_locked),
+  isUnlisted: Boolean(row.is_unlisted),
+  createdAt: row.created_at,
+  lastActivityAt: row.last_activity_at,
+});
+
+const mapTopicComment = (row) => ({
+  id: row.id,
+  topicId: row.topic_id,
+  body: row.body,
+  authorName: row.author_name || null,
+  createdAt: row.created_at,
+});
+
 const fetchPosts = async ({ limit, featuredOnly = false } = {}) => {
   const cacheKey = `posts:${featuredOnly ? 'featured' : 'all'}:${limit || 'all'}`;
   const cached = readCache(cacheKey);
@@ -276,6 +299,73 @@ const fetchProjects = async ({ limit } = {}) => {
   const projects = rows.map(mapProject);
   writeCache(cacheKey, projects);
   return projects;
+};
+
+const fetchTopics = async ({ status = 'open', includeUnlisted = false } = {}) => {
+  const cacheKey = `topics:${status}:${includeUnlisted ? 'all' : 'listed'}`;
+  const cached = readCache(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  const params = {
+    select: 'id,title,slug,body,author_name,status,is_locked,is_unlisted,created_at,last_activity_at',
+    order: 'last_activity_at.desc',
+  };
+
+  if (status && status !== 'all') {
+    params.status = `eq.${status}`;
+  }
+
+  if (!includeUnlisted) {
+    params.is_unlisted = 'eq.false';
+  }
+
+  const rows = await supabaseFetch('topics', params);
+  const topics = rows.map(mapTopic);
+  writeCache(cacheKey, topics);
+  return topics;
+};
+
+const fetchTopicBySlug = async (slug) => {
+  const cacheKey = `topic:${slug}`;
+  const cached = readCache(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  const params = {
+    select: 'id,title,slug,body,author_name,status,is_locked,is_unlisted,created_at,last_activity_at',
+    slug: `eq.${slug}`,
+    limit: '1',
+  };
+
+  const rows = await supabaseFetch('topics', params);
+  const topic = rows.length > 0 ? mapTopic(rows[0]) : null;
+  if (topic) {
+    writeCache(cacheKey, topic);
+  }
+  return topic;
+};
+
+const fetchTopicComments = async (topicId) => {
+  const cacheKey = `topic-comments:${topicId}`;
+  const cached = readCache(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  const params = {
+    select: 'id,topic_id,body,author_name,created_at',
+    topic_id: `eq.${topicId}`,
+    is_hidden: 'eq.false',
+    order: 'created_at.asc',
+  };
+
+  const rows = await supabaseFetch('topic_comments', params);
+  const comments = rows.map(mapTopicComment);
+  writeCache(cacheKey, comments);
+  return comments;
 };
 
 const formatDate = (value) => {
@@ -734,6 +824,59 @@ const requestSearchAi = async (question, items) => {
 
   const data = await response.json();
   return typeof data?.answer === 'string' ? data.answer.trim() : '';
+};
+
+const requestTopicSubmit = async ({ title, body, authorName, isUnlisted }) => {
+  if (!hasSupabaseConfig()) {
+    throw new Error('Missing Supabase configuration');
+  }
+
+  const response = await fetch(`${SUPABASE_URL}/functions/v1/${TALK_TOPIC_FUNCTION}`, {
+    method: 'POST',
+    headers: {
+      apikey: SUPABASE_KEY,
+      Authorization: `Bearer ${SUPABASE_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      title,
+      body,
+      author_name: authorName,
+      is_unlisted: Boolean(isUnlisted),
+    }),
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data?.error || 'Topic submit failed');
+  }
+  return data?.topic || null;
+};
+
+const requestCommentSubmit = async ({ topicId, body, authorName }) => {
+  if (!hasSupabaseConfig()) {
+    throw new Error('Missing Supabase configuration');
+  }
+
+  const response = await fetch(`${SUPABASE_URL}/functions/v1/${TALK_COMMENT_FUNCTION}`, {
+    method: 'POST',
+    headers: {
+      apikey: SUPABASE_KEY,
+      Authorization: `Bearer ${SUPABASE_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      topic_id: topicId,
+      body,
+      author_name: authorName,
+    }),
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data?.error || 'Comment submit failed');
+  }
+  return data?.comment || null;
 };
 
 const renderAiSources = (container, items) => {
@@ -1286,6 +1429,385 @@ const initSearchAi = ({ indexItems, input }) => {
       setStatus('AI request failed.');
     } finally {
       runButton.disabled = false;
+    }
+  });
+};
+
+export const initTalkPage = async () => {
+  const section = document.querySelector('[data-talk-page]');
+  if (!section) {
+    return;
+  }
+
+  const listSection = section.querySelector('[data-talk-list]');
+  const detailSection = section.querySelector('[data-talk-detail]');
+  const filters = Array.from(section.querySelectorAll('[data-talk-filter]'));
+  const form = section.querySelector('[data-talk-form]');
+
+  if (!listSection || !detailSection) {
+    return;
+  }
+
+  if (!hasSupabaseConfig()) {
+    setSectionState(listSection, 'error', getSupabaseErrorMessage('topics'));
+    return;
+  }
+
+  const list = listSection.querySelector('[data-list]');
+  const template = listSection.querySelector('template');
+  const empty = listSection.querySelector('[data-empty]');
+
+  const detailTitle = detailSection.querySelector('[data-talk-detail-title]');
+  const detailBody = detailSection.querySelector('[data-talk-detail-body]');
+  const detailMeta = detailSection.querySelector('[data-talk-detail-meta]');
+  const detailStatus = detailSection.querySelector('[data-talk-detail-status]');
+  const backButton = detailSection.querySelector('[data-talk-back]');
+  const copyButton = detailSection.querySelector('[data-talk-copy]');
+  const shareButton = detailSection.querySelector('[data-talk-share]');
+
+  const commentsSection = detailSection.querySelector('[data-talk-comments]');
+  const commentsEmpty = commentsSection?.querySelector('[data-talk-comments-empty]');
+  const commentsList = commentsSection?.querySelector('[data-talk-comments-list]');
+  const commentsTemplate = commentsSection?.querySelector('template');
+
+  const commentForm = detailSection.querySelector('[data-talk-comment-form]');
+  const commentBody = detailSection.querySelector('[data-talk-comment-body]');
+  const commentAuthor = detailSection.querySelector('[data-talk-comment-author]');
+  const commentStatus = detailSection.querySelector('[data-talk-comment-status]');
+  const commentSubmit = detailSection.querySelector('[data-talk-comment-submit]');
+
+  const formStatus = section.querySelector('[data-talk-form-status]');
+  const titleInput = section.querySelector('[data-talk-title]');
+  const bodyInput = section.querySelector('[data-talk-body]');
+  const authorInput = section.querySelector('[data-talk-author]');
+  const unlistedInput = section.querySelector('[data-talk-unlisted]');
+  const formSubmit = section.querySelector('[data-talk-submit]');
+
+  const setDetailVisible = (visible) => {
+    detailSection.classList.toggle('hidden', !visible);
+    detailSection.setAttribute('aria-hidden', String(!visible));
+    listSection.classList.toggle('hidden', visible);
+    listSection.setAttribute('aria-hidden', String(visible));
+  };
+
+  const formatMeta = (topic) => {
+    const entries = [
+      topic.status === 'archived' ? 'Archived' : 'Open',
+      topic.authorName || 'Anon',
+      formatDate(topic.createdAt),
+      topic.isUnlisted ? 'Unlisted' : null,
+    ].filter(Boolean);
+    return entries;
+  };
+
+  const renderComments = (comments) => {
+    if (!commentsList || !commentsEmpty || !commentsTemplate) {
+      return;
+    }
+    commentsList.innerHTML = '';
+
+    if (!comments.length) {
+      commentsEmpty.classList.remove('hidden');
+      commentsList.classList.add('hidden');
+      return;
+    }
+
+    commentsEmpty.classList.add('hidden');
+    commentsList.classList.remove('hidden');
+    comments.forEach((comment) => {
+      const node = commentsTemplate.content.firstElementChild.cloneNode(true);
+      const meta = node.querySelector('[data-comment-meta]');
+      meta.textContent = `${comment.authorName || 'Anon'} · ${formatDate(comment.createdAt)}`;
+      node.querySelector('[data-comment-body]').textContent = comment.body;
+      commentsList.appendChild(node);
+    });
+  };
+
+  const setCommentFormState = (locked, message) => {
+    if (commentBody) {
+      commentBody.disabled = locked;
+    }
+    if (commentAuthor) {
+      commentAuthor.disabled = locked;
+    }
+    if (commentSubmit) {
+      commentSubmit.disabled = locked;
+    }
+    if (commentStatus) {
+      commentStatus.textContent = message || '';
+    }
+  };
+
+  const renderDetail = async (slug) => {
+    if (!slug) {
+      return;
+    }
+
+    setDetailVisible(true);
+    detailSection.setAttribute('aria-busy', 'true');
+
+    try {
+      const topic = await fetchTopicBySlug(slug);
+      if (!topic) {
+        detailTitle.textContent = 'Topic not found.';
+        detailBody.textContent = '';
+        detailStatus.textContent = '';
+        detailSection.setAttribute('aria-busy', 'false');
+        return;
+      }
+
+      detailTitle.textContent = topic.title;
+      detailBody.textContent = topic.body;
+      detailStatus.textContent = topic.isLocked
+        ? 'This topic is locked.'
+        : topic.status === 'archived'
+        ? 'This topic is archived.'
+        : '';
+
+      if (detailMeta) {
+        detailMeta.innerHTML = '';
+        formatMeta(topic).forEach((entry) => {
+          const span = document.createElement('span');
+          span.textContent = entry;
+          detailMeta.appendChild(span);
+        });
+      }
+
+      const comments = await fetchTopicComments(topic.id);
+      renderComments(comments);
+
+      const locked = topic.isLocked || topic.status === 'archived';
+      setCommentFormState(locked, locked ? 'Replies are closed.' : '');
+      commentForm.dataset.topicId = topic.id;
+      commentForm.dataset.topicSlug = topic.slug;
+    } catch (error) {
+      detailTitle.textContent = 'Unable to load topic.';
+      detailBody.textContent = '';
+      detailStatus.textContent = '';
+    } finally {
+      detailSection.setAttribute('aria-busy', 'false');
+    }
+  };
+
+  const renderList = async (status) => {
+    if (!list || !template || !empty) {
+      return;
+    }
+
+    setSectionState(listSection, 'loading');
+    try {
+      const topics = await fetchTopics({ status, includeUnlisted: false });
+      list.innerHTML = '';
+      if (!topics.length) {
+        empty.textContent = 'No topics yet.';
+        setSectionState(listSection, 'empty');
+        return;
+      }
+
+      topics.forEach((topic) => {
+        const node = template.content.firstElementChild.cloneNode(true);
+        const meta = node.querySelector('[data-meta]');
+        meta.textContent = `${topic.status === 'archived' ? 'Archived' : 'Open'} · ${formatDate(
+          topic.lastActivityAt
+        )}`;
+        node.querySelector('[data-title]').textContent = topic.title;
+        const preview = topic.body ? topic.body.slice(0, 140) : '';
+        node.querySelector('[data-preview]').textContent = preview;
+        const link = node.querySelector('[data-talk-link]');
+        const url = new URL(window.location.href);
+        url.searchParams.set('topic', topic.slug);
+        url.searchParams.delete('status');
+        link.href = url.toString();
+        list.appendChild(node);
+      });
+      setSectionState(listSection, 'ready');
+    } catch (error) {
+      setSectionState(listSection, 'error', getSupabaseErrorMessage('topics', error));
+    }
+  };
+
+  const updateUrl = ({ status, topic }) => {
+    const url = new URL(window.location.href);
+    if (status) {
+      url.searchParams.set('status', status);
+    } else {
+      url.searchParams.delete('status');
+    }
+    if (topic) {
+      url.searchParams.set('topic', topic);
+    } else {
+      url.searchParams.delete('topic');
+    }
+    window.history.replaceState({}, '', url);
+  };
+
+  const params = new URLSearchParams(window.location.search);
+  const initialStatus = params.get('status') === 'archived' ? 'archived' : 'open';
+  const initialTopic = params.get('topic');
+  let activeStatus = initialStatus;
+
+  const setActiveFilter = (value) => {
+    filters.forEach((button) => {
+      const isActive = button.dataset.talkFilter === value;
+      button.setAttribute('aria-pressed', String(isActive));
+      button.classList.toggle('bg-sky-100', isActive);
+      button.classList.toggle('text-sky-700', isActive);
+      button.classList.toggle('border-sky-200', isActive);
+      button.classList.toggle('dark:bg-sky-500/10', isActive);
+      button.classList.toggle('dark:text-sky-200', isActive);
+      button.classList.toggle('dark:border-sky-500/40', isActive);
+    });
+  };
+
+  if (initialTopic) {
+    setDetailVisible(true);
+    renderDetail(initialTopic);
+  } else {
+    setDetailVisible(false);
+    renderList(initialStatus);
+  }
+  setActiveFilter(initialStatus);
+
+  filters.forEach((button) => {
+    button.addEventListener('click', () => {
+      const status = button.dataset.talkFilter || 'open';
+      activeStatus = status;
+      setActiveFilter(status);
+      updateUrl({ status, topic: null });
+      setDetailVisible(false);
+      renderList(status);
+    });
+  });
+
+  backButton?.addEventListener('click', () => {
+    updateUrl({ status: activeStatus, topic: null });
+    setDetailVisible(false);
+    renderList(activeStatus);
+  });
+
+  copyButton?.addEventListener('click', async () => {
+    const url = window.location.href;
+    try {
+      await navigator.clipboard.writeText(url);
+      copyButton.textContent = 'Copied';
+      setTimeout(() => {
+        copyButton.textContent = 'Copy link';
+      }, 1200);
+    } catch (error) {
+      copyButton.textContent = 'Copy failed';
+      setTimeout(() => {
+        copyButton.textContent = 'Copy link';
+      }, 1200);
+    }
+  });
+
+  shareButton?.addEventListener('click', async () => {
+    if (!navigator.share) {
+      return;
+    }
+    try {
+      await navigator.share({
+        title: detailTitle?.textContent || 'Topic',
+        url: window.location.href,
+      });
+    } catch (error) {
+      // Ignore share errors.
+    }
+  });
+
+  form?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!titleInput || !bodyInput) {
+      return;
+    }
+    const title = titleInput.value.trim();
+    const body = bodyInput.value.trim();
+    const authorName = authorInput?.value.trim() || '';
+    const isUnlisted = Boolean(unlistedInput?.checked);
+
+    if (!title || !body) {
+      if (formStatus) {
+        formStatus.textContent = 'Title and topic are required.';
+      }
+      return;
+    }
+
+    if (formSubmit) {
+      formSubmit.disabled = true;
+    }
+    if (formStatus) {
+      formStatus.textContent = 'Publishing...';
+    }
+
+    try {
+      const topic = await requestTopicSubmit({ title, body, authorName, isUnlisted });
+      if (!topic) {
+        throw new Error('No topic returned');
+      }
+      titleInput.value = '';
+      bodyInput.value = '';
+      if (authorInput) {
+        authorInput.value = '';
+      }
+      if (unlistedInput) {
+        unlistedInput.checked = false;
+      }
+      updateUrl({ status: initialStatus, topic: topic.slug });
+      renderDetail(topic.slug);
+    } catch (error) {
+      if (formStatus) {
+        formStatus.textContent = error?.message || 'Unable to publish.';
+      }
+    } finally {
+      if (formSubmit) {
+        formSubmit.disabled = false;
+      }
+    }
+  });
+
+  commentForm?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const topicId = commentForm.dataset.topicId;
+    if (!topicId || !commentBody) {
+      return;
+    }
+    const body = commentBody.value.trim();
+    const authorName = commentAuthor?.value.trim() || '';
+    if (!body) {
+      if (commentStatus) {
+        commentStatus.textContent = 'Reply text is required.';
+      }
+      return;
+    }
+    if (commentSubmit) {
+      commentSubmit.disabled = true;
+    }
+    if (commentStatus) {
+      commentStatus.textContent = 'Posting...';
+    }
+
+    try {
+      const comment = await requestCommentSubmit({ topicId, body, authorName });
+      if (!comment) {
+        throw new Error('No comment returned');
+      }
+      commentBody.value = '';
+      if (commentAuthor) {
+        commentAuthor.value = '';
+      }
+      const comments = await fetchTopicComments(topicId);
+      renderComments(comments);
+      if (commentStatus) {
+        commentStatus.textContent = '';
+      }
+    } catch (error) {
+      if (commentStatus) {
+        commentStatus.textContent = error?.message || 'Unable to post reply.';
+      }
+    } finally {
+      if (commentSubmit) {
+        commentSubmit.disabled = false;
+      }
     }
   });
 };

@@ -96,10 +96,52 @@ alter table public.projects
 
 create index if not exists projects_updated_at_idx on public.projects (updated_at desc);
 
+-- Topics (anonymous sharing)
+create table if not exists public.topics (
+  id uuid primary key default gen_random_uuid(),
+  title text not null,
+  slug text not null unique,
+  body text not null,
+  author_name text,
+  status text not null default 'open',
+  is_locked boolean not null default false,
+  is_unlisted boolean not null default false,
+  last_activity_at timestamptz not null default now(),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.topic_comments (
+  id uuid primary key default gen_random_uuid(),
+  topic_id uuid not null references public.topics (id) on delete cascade,
+  body text not null,
+  author_name text,
+  is_hidden boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.topic_audit (
+  id bigserial primary key,
+  topic_id uuid references public.topics (id) on delete set null,
+  comment_id uuid references public.topic_comments (id) on delete set null,
+  action text not null,
+  ip text,
+  user_agent text,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists topics_status_activity_idx on public.topics (status, last_activity_at desc);
+create index if not exists topics_slug_idx on public.topics (slug);
+create index if not exists topic_comments_topic_idx on public.topic_comments (topic_id, created_at desc);
+create index if not exists topic_audit_ip_idx on public.topic_audit (ip, created_at desc);
+
 -- Enable RLS
 alter table public.posts enable row level security;
 alter table public.news enable row level security;
 alter table public.projects enable row level security;
+alter table public.topics enable row level security;
+alter table public.topic_comments enable row level security;
+alter table public.topic_audit enable row level security;
 
 create or replace function public.set_updated_at()
 returns trigger
@@ -130,6 +172,11 @@ create trigger set_projects_updated_at
   before insert or update on public.projects
   for each row execute function public.set_updated_at();
 
+drop trigger if exists set_topics_updated_at on public.topics;
+create trigger set_topics_updated_at
+  before insert or update on public.topics
+  for each row execute function public.set_updated_at();
+
 -- Public read policies (drafts hidden)
 drop policy if exists "Public posts are readable" on public.posts;
 create policy "Public posts are readable"
@@ -148,6 +195,18 @@ create policy "Public projects are readable"
   on public.projects
   for select
   using (true);
+
+drop policy if exists "Public topics are readable" on public.topics;
+create policy "Public topics are readable"
+  on public.topics
+  for select
+  using (status in ('open', 'archived'));
+
+drop policy if exists "Public topic comments are readable" on public.topic_comments;
+create policy "Public topic comments are readable"
+  on public.topic_comments
+  for select
+  using (is_hidden = false);
 
 -- Admin access (authenticated users listed in admin_users)
 create table if not exists public.admin_users (
@@ -197,6 +256,26 @@ create policy "Admins can manage projects"
   for all
   using (public.is_admin())
   with check (public.is_admin());
+
+drop policy if exists "Admins can manage topics" on public.topics;
+create policy "Admins can manage topics"
+  on public.topics
+  for all
+  using (public.is_admin())
+  with check (public.is_admin());
+
+drop policy if exists "Admins can manage topic comments" on public.topic_comments;
+create policy "Admins can manage topic comments"
+  on public.topic_comments
+  for all
+  using (public.is_admin())
+  with check (public.is_admin());
+
+drop policy if exists "Admins can read topic audit" on public.topic_audit;
+create policy "Admins can read topic audit"
+  on public.topic_audit
+  for select
+  using (public.is_admin());
 
 -- Search AI query logs
 create table if not exists public.search_ai_queries (
