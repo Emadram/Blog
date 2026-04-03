@@ -161,8 +161,8 @@ const mapProject = (row) => ({
   updatedAt: row.updated_at || null,
 });
 
-const fetchPosts = async ({ limit } = {}) => {
-  const cacheKey = limit ? `posts:${limit}` : 'posts:all';
+const fetchPosts = async ({ limit, featuredOnly = false } = {}) => {
+  const cacheKey = `posts:${featuredOnly ? 'featured' : 'all'}:${limit || 'all'}`;
   const cached = readCache(cacheKey);
   if (cached) {
     return cached;
@@ -175,6 +175,10 @@ const fetchPosts = async ({ limit } = {}) => {
     published_at: `lte.${now}`,
     order: 'published_at.desc',
   };
+
+  if (featuredOnly) {
+    params.featured = 'eq.true';
+  }
 
   if (limit) {
     params.limit = String(limit);
@@ -226,8 +230,8 @@ const fetchPostPreview = async (token) => {
   return post;
 };
 
-const fetchNews = async ({ limit } = {}) => {
-  const cacheKey = limit ? `news:${limit}` : 'news:all';
+const fetchNews = async ({ limit, featuredOnly = false } = {}) => {
+  const cacheKey = `news:${featuredOnly ? 'featured' : 'all'}:${limit || 'all'}`;
   const cached = readCache(cacheKey);
   if (cached) {
     return cached;
@@ -237,6 +241,10 @@ const fetchNews = async ({ limit } = {}) => {
     select: 'title,source,url,summary,published_at,tags,read_minutes,pinned,category',
     order: 'published_at.desc',
   };
+
+  if (featuredOnly) {
+    params.featured = 'eq.true';
+  }
 
   if (limit) {
     params.limit = String(limit);
@@ -528,8 +536,8 @@ const buildSearchIndex = async () => {
   }
 
   const [postsResult, newsResult, projectsResult] = await Promise.allSettled([
-    fetchPosts(),
-    fetchNews(),
+    fetchPosts({ limit: 3, featuredOnly: true }),
+    fetchNews({ limit: 3, featuredOnly: true }),
     fetchProjects(),
   ]);
 
@@ -941,7 +949,6 @@ export const initHome = async () => {
         const tags = node.querySelector('[data-tags]');
         renderTags(tags, item.tags, item.category);
         const meta = node.querySelector('[data-meta]');
-        meta.innerHTML = '';
         if (item.readMinutes) {
           const span = document.createElement('span');
           span.textContent = `${item.readMinutes} min`;

@@ -717,6 +717,10 @@ button {
   font-weight: 600;
 }
 
+.visitor-grid {
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.9fr) minmax(0, 1fr) minmax(0, 1.8fr);
+}
+
 @media (max-width: 900px) {
   .query-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));

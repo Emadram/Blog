@@ -12,6 +12,7 @@ create table if not exists public.posts (
   published_at timestamptz not null default now(),
   tags text[] not null default '{}',
   draft boolean not null default false,
+  featured boolean not null default false,
   cover_image text,
   cover_image_alt text,
   created_by uuid references auth.users (id),
@@ -24,6 +25,7 @@ alter table public.posts
   add column if not exists description text,
   add column if not exists tags text[] not null default '{}',
   add column if not exists draft boolean not null default false,
+  add column if not exists featured boolean not null default false,
   add column if not exists cover_image text,
   add column if not exists cover_image_alt text,
   add column if not exists created_by uuid references auth.users (id),
@@ -31,6 +33,7 @@ alter table public.posts
   add column if not exists updated_at timestamptz not null default now();
 
 create index if not exists posts_published_at_idx on public.posts (published_at desc);
+create index if not exists posts_featured_idx on public.posts (featured, published_at desc);
 create index if not exists posts_slug_idx on public.posts (slug);
 
 -- News (curated links)
@@ -44,6 +47,7 @@ create table if not exists public.news (
   tags text[] not null default '{}',
   read_minutes integer,
   pinned boolean not null default false,
+  featured boolean not null default false,
   category text,
   created_by uuid references auth.users (id),
   updated_by uuid references auth.users (id),
@@ -56,12 +60,14 @@ alter table public.news
   add column if not exists tags text[] not null default '{}',
   add column if not exists read_minutes integer,
   add column if not exists pinned boolean not null default false,
+  add column if not exists featured boolean not null default false,
   add column if not exists category text,
   add column if not exists created_by uuid references auth.users (id),
   add column if not exists updated_by uuid references auth.users (id),
   add column if not exists updated_at timestamptz not null default now();
 
 create index if not exists news_published_at_idx on public.news (published_at desc);
+create index if not exists news_featured_idx on public.news (featured, published_at desc);
 create unique index if not exists news_url_idx on public.news (url);
 
 -- Projects
@@ -209,6 +215,27 @@ alter table public.search_ai_queries enable row level security;
 drop policy if exists "Admins can read search AI logs" on public.search_ai_queries;
 create policy "Admins can read search AI logs"
   on public.search_ai_queries
+  for select
+  using (public.is_admin());
+
+-- Visitor logs
+create table if not exists public.visitor_logs (
+  id bigserial primary key,
+  path text,
+  referrer text,
+  ip text,
+  user_agent text,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists visitor_logs_created_at_idx
+  on public.visitor_logs (created_at desc);
+
+alter table public.visitor_logs enable row level security;
+
+drop policy if exists "Admins can read visitor logs" on public.visitor_logs;
+create policy "Admins can read visitor logs"
+  on public.visitor_logs
   for select
   using (public.is_admin());
 

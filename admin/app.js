@@ -23,6 +23,7 @@ const dom = {
     projects: document.querySelector('[data-list="projects"]'),
     activity: document.querySelector('[data-list="activity"]'),
     searchAiQueries: document.querySelector('[data-list="search-ai-queries"]'),
+    visitorLogs: document.querySelector('[data-list="visitor-logs"]'),
   },
   forms: {
     posts: document.querySelector('[data-form="posts"]'),
@@ -109,6 +110,7 @@ const state = {
     projects: [],
     activity: [],
     searchAiQueries: [],
+    visitorLogs: [],
   },
   selected: {
     posts: null,
@@ -1195,6 +1197,51 @@ const renderSearchAiQueries = () => {
   });
 };
 
+const renderVisitorLogs = () => {
+  const list = dom.lists.visitorLogs;
+  if (!list) {
+    return;
+  }
+  list.innerHTML = "";
+
+  if (!state.items.visitorLogs.length) {
+    const empty = document.createElement("p");
+    empty.className = "list-empty";
+    empty.textContent = "No visits logged yet.";
+    list.appendChild(empty);
+    return;
+  }
+
+  const buildCell = (label, value) => {
+    const cell = document.createElement("div");
+    cell.className = "query-grid-cell";
+
+    const key = document.createElement("span");
+    key.className = "query-grid-label";
+    key.textContent = label;
+
+    const val = document.createElement("span");
+    val.className = "query-grid-value";
+    val.textContent = value || "Unknown";
+
+    cell.appendChild(key);
+    cell.appendChild(val);
+    return cell;
+  };
+
+  state.items.visitorLogs.forEach((entry) => {
+    const row = document.createElement("div");
+    row.className = "activity-item query-grid visitor-grid";
+
+    row.appendChild(buildCell("Path", entry.path || "/"));
+    row.appendChild(buildCell("IP", entry.ip || "Unknown"));
+    row.appendChild(buildCell("Visited", formatDateTime(entry.created_at)));
+    row.appendChild(buildCell("User agent", entry.user_agent || "Unknown"));
+
+    list.appendChild(row);
+  });
+};
+
 const loadPosts = async () => {
   if (!supabase) {
     return;
@@ -1288,6 +1335,25 @@ const loadSearchAiQueries = async () => {
 
   state.items.searchAiQueries = data || [];
   renderSearchAiQueries();
+};
+
+const loadVisitorLogs = async () => {
+  if (!supabase) {
+    return;
+  }
+  const { data, error } = await supabase
+    .from("visitor_logs")
+    .select("path, referrer, ip, user_agent, created_at")
+    .order("created_at", { ascending: false })
+    .limit(200);
+
+  if (error) {
+    setStatus(`Visitor log failed to load: ${error.message}`, "error");
+    return;
+  }
+
+  state.items.visitorLogs = data || [];
+  renderVisitorLogs();
 };
 
 const syncSelectedSet = (selectedSet, items) => {
@@ -1509,6 +1575,7 @@ const fillPostForm = (post) => {
   form.querySelector("[name=\"content_md\"]").value = post?.content_md || "";
   form.querySelector("[name=\"tags\"]").value = formatTags(post?.tags);
   form.querySelector("[name=\"draft\"]").checked = Boolean(post?.draft);
+  form.querySelector("[name=\"featured\"]").checked = Boolean(post?.featured);
   form.querySelector("[name=\"published_at\"]").value = toInputDateTime(post?.published_at);
   form.querySelector("[name=\"cover_image\"]").value = post?.cover_image || "";
   form.querySelector("[name=\"cover_image_alt\"]").value = post?.cover_image_alt || "";
@@ -1536,6 +1603,7 @@ const fillNewsForm = (item) => {
   form.querySelector("[name=\"tags\"]").value = formatTags(item?.tags);
   form.querySelector("[name=\"read_minutes\"]").value = item?.read_minutes ?? "";
   form.querySelector("[name=\"pinned\"]").checked = Boolean(item?.pinned);
+  form.querySelector("[name=\"featured\"]").checked = Boolean(item?.featured);
   form.querySelector("[name=\"category\"]").value = item?.category || "";
   lastNewsAutofillUrl = normalizeImportUrl(item?.url || "");
   setNewsAutofillStatus("");
@@ -1698,6 +1766,7 @@ const savePost = async () => {
     published_at: publishedAt,
     tags: parseTags(form.querySelector("[name=\"tags\"]").value),
     draft: form.querySelector("[name=\"draft\"]").checked,
+    featured: form.querySelector("[name=\"featured\"]").checked,
     cover_image: form.querySelector("[name=\"cover_image\"]").value.trim() || null,
     cover_image_alt: form.querySelector("[name=\"cover_image_alt\"]").value.trim() || null,
   };
@@ -2106,6 +2175,7 @@ const handleNewsSubmit = async (event) => {
     tags: parseTags(form.querySelector("[name=\"tags\"]").value),
     read_minutes: Number.parseInt(form.querySelector("[name=\"read_minutes\"]").value, 10) || null,
     pinned: form.querySelector("[name=\"pinned\"]").checked,
+    featured: form.querySelector("[name=\"featured\"]").checked,
     category: form.querySelector("[name=\"category\"]").value.trim() || null,
   };
 
@@ -2292,6 +2362,7 @@ const handleSession = async (session) => {
     loadProjects(),
     loadActivity(),
     loadSearchAiQueries(),
+    loadVisitorLogs(),
   ]);
   if (cleanupResult.error) {
     setStatus("Content synced. Preview cleanup failed.", "success");
@@ -2440,7 +2511,7 @@ const init = async () => {
   newsUrlInput?.addEventListener("paste", scheduleNewsAutofill);
   dom.refreshActivity?.addEventListener("click", async () => {
     setStatus("Refreshing activity...", "info");
-    await Promise.all([loadActivity(), loadSearchAiQueries()]);
+    await Promise.all([loadActivity(), loadSearchAiQueries(), loadVisitorLogs()]);
     setStatus("Activity updated.", "success");
   });
   dom.cleanPreviews?.addEventListener("click", async () => {

@@ -174,6 +174,14 @@
                       </div>
                     </div>
                     <div class="field-grid two">
+                      <div class="field checkbox">
+                        <label>
+                          <input name="featured" type="checkbox" />
+                          Feature on homepage
+                        </label>
+                      </div>
+                    </div>
+                    <div class="field-grid two">
                       <div class="field">
                         <label for="post-cover">Cover image URL</label>
                         <input id="post-cover" name="cover_image" type="url" />
@@ -361,11 +369,19 @@
                         <input id="news-category" name="category" type="text" />
                       </div>
                     </div>
-                    <div class="field checkbox">
-                      <label>
-                        <input name="pinned" type="checkbox" />
-                        Pin this link
-                      </label>
+                    <div class="field-grid two">
+                      <div class="field checkbox">
+                        <label>
+                          <input name="pinned" type="checkbox" />
+                          Pin this link
+                        </label>
+                      </div>
+                      <div class="field checkbox">
+                        <label>
+                          <input name="featured" type="checkbox" />
+                          Feature on homepage
+                        </label>
+                      </div>
                     </div>
                     <div class="form-actions">
                       <button class="button accent" type="submit">Save link</button>
@@ -491,6 +507,17 @@
                     </div>
                   </div>
                   <div class="list-items" data-list="search-ai-queries"></div>
+                </div>
+                <div class="resource-list surface">
+                  <div class="list-toolbar">
+                    <div class="schedule-header">
+                      <div>
+                        <p class="eyebrow">Visitor log</p>
+                        <p class="muted">Latest visits with IP and path.</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="list-items" data-list="visitor-logs"></div>
                 </div>
               </div>
             </section>
