@@ -19,7 +19,6 @@ const SEARCH_AI_FUNCTION = 'search-ai';
 const SEARCH_AI_MAX_ITEMS = 5;
 const TALK_TOPIC_FUNCTION = 'topic-submit';
 const TALK_COMMENT_FUNCTION = 'comment-submit';
-const TALK_READ_FUNCTION = 'topics-read';
 const memoryCache = new Map();
 
 const canUseSessionStorage = () => typeof sessionStorage !== 'undefined';
@@ -129,28 +128,6 @@ const supabaseRpc = async (fn, payload) => {
   }
 
   return response.json();
-};
-
-const requestTalkRead = async (payload) => {
-  if (!hasSupabaseConfig()) {
-    throw new Error('Missing Supabase configuration');
-  }
-
-  const response = await fetch(`${SUPABASE_URL}/functions/v1/${TALK_READ_FUNCTION}`, {
-    method: 'POST',
-    headers: {
-      apikey: SUPABASE_KEY,
-      Authorization: `Bearer ${SUPABASE_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(payload || {}),
-  });
-
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(data?.error || 'Talk request failed');
-  }
-  return data;
 };
 
 const mapPost = (row) => ({
@@ -332,12 +309,21 @@ const fetchTopics = async ({ status = 'open', includeUnlisted = false } = {}) =>
     return cached;
   }
 
-  const data = await requestTalkRead({
-    action: 'list',
-    status,
-    include_unlisted: includeUnlisted,
-  });
-  const rows = Array.isArray(data?.topics) ? data.topics : [];
+  const params = {
+    select:
+      'id,title,slug,body,author_name,status,is_locked,is_unlisted,voice_enabled,created_at,last_activity_at',
+    order: 'last_activity_at.desc',
+  };
+
+  if (status && status !== 'all') {
+    params.status = `eq.${status}`;
+  }
+
+  if (!includeUnlisted) {
+    params.is_unlisted = 'eq.false';
+  }
+
+  const rows = await supabaseFetch('topics', params);
   const topics = rows.map(mapTopic);
   writeCache(cacheKey, topics);
   return topics;
@@ -350,9 +336,15 @@ const fetchTopicBySlug = async (slug) => {
     return cached;
   }
 
-  const data = await requestTalkRead({ action: 'detail', slug });
-  const row = data?.topic || null;
-  const topic = row ? mapTopic(row) : null;
+  const params = {
+    select:
+      'id,title,slug,body,author_name,status,is_locked,is_unlisted,voice_enabled,created_at,last_activity_at',
+    slug: `eq.${slug}`,
+    limit: '1',
+  };
+
+  const rows = await supabaseFetch('topics', params);
+  const topic = rows.length > 0 ? mapTopic(rows[0]) : null;
   if (topic) {
     writeCache(cacheKey, topic);
   }
@@ -366,8 +358,14 @@ const fetchTopicComments = async (topicId) => {
     return cached;
   }
 
-  const data = await requestTalkRead({ action: 'comments', topic_id: topicId });
-  const rows = Array.isArray(data?.comments) ? data.comments : [];
+  const params = {
+    select: 'id,topic_id,body,author_name,created_at',
+    topic_id: `eq.${topicId}`,
+    is_hidden: 'eq.false',
+    order: 'created_at.asc',
+  };
+
+  const rows = await supabaseFetch('topic_comments', params);
   const comments = rows.map(mapTopicComment);
   writeCache(cacheKey, comments);
   return comments;
