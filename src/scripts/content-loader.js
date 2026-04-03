@@ -1558,10 +1558,18 @@ export const initTalkPage = async () => {
 
       detailTitle.textContent = topic.title;
       detailBody.textContent = topic.body;
-      detailStatus.textContent = topic.isLocked
-        ? 'This topic is locked.'
-        : topic.status === 'archived'
-        ? 'This topic is archived.'
+      const statusMessages = [];
+      if (topic.status === 'archived') {
+        statusMessages.push('Archived');
+      }
+      if (topic.isLocked) {
+        statusMessages.push('Locked');
+      }
+      if (topic.isUnlisted) {
+        statusMessages.push('Unlisted');
+      }
+      detailStatus.textContent = statusMessages.length
+        ? `Status: ${statusMessages.join(' · ')}`
         : '';
 
       if (detailMeta) {

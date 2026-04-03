@@ -46,6 +46,7 @@ const dom = {
     topics: document.querySelector('[data-delete="topics"]'),
     projects: document.querySelector('[data-delete="projects"]'),
   },
+  topicCopy: document.querySelector('[data-topic-copy]'),
   publishNow: document.querySelector('[data-publish-now]'),
   setDraft: document.querySelector('[data-set-draft]'),
   postFilters: Array.from(document.querySelectorAll('[data-post-filter]')),
@@ -2021,12 +2022,16 @@ const saveTopic = async () => {
 
   setStatus("Saving topic...", "info");
   const query = id
-    ? supabase.from("topics").update(payload).eq("id", id).select().single()
+    ? supabase.from("topics").update(payload).eq("id", id).select().maybeSingle()
     : supabase.from("topics").insert(payload).select().single();
 
   const { data, error } = await query;
   if (error) {
     setStatus(`Save failed: ${error.message}`, "error");
+    return;
+  }
+  if (!data) {
+    setStatus("Save failed: topic not found or permission denied.", "error");
     return;
   }
 
@@ -2565,6 +2570,22 @@ const handleDelete = async (resource) => {
   }
 };
 
+const copyTopicShareLink = async () => {
+  const topic = state.selected.topics;
+  if (!topic?.slug) {
+    setStatus("Select a topic to copy the link.", "error");
+    return;
+  }
+  try {
+    const url = new URL("talk/", siteBaseUrl);
+    url.searchParams.set("topic", topic.slug);
+    await navigator.clipboard.writeText(url.toString());
+    setStatus("Share link copied.", "success");
+  } catch (error) {
+    setStatus("Copy failed.", "error");
+  }
+};
+
 const bindSelectableListEvents = (resource, selectedSet, renderList, fillForm) => {
   const list = dom.lists[resource];
   if (!list) {
@@ -2682,6 +2703,7 @@ const init = async () => {
   dom.deleteButtons.news?.addEventListener("click", () => handleDelete("news"));
   dom.deleteButtons.topics?.addEventListener("click", () => handleDelete("topics"));
   dom.deleteButtons.projects?.addEventListener("click", () => handleDelete("projects"));
+  dom.topicCopy?.addEventListener("click", copyTopicShareLink);
 
   dom.publishNow?.addEventListener("click", handlePublishNow);
   dom.setDraft?.addEventListener("click", handleSetDraft);
