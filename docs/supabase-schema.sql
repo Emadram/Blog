@@ -106,10 +106,14 @@ create table if not exists public.topics (
   status text not null default 'open',
   is_locked boolean not null default false,
   is_unlisted boolean not null default false,
+  voice_enabled boolean not null default false,
   last_activity_at timestamptz not null default now(),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.topics
+  add column if not exists voice_enabled boolean not null default false;
 
 create table if not exists public.topic_comments (
   id uuid primary key default gen_random_uuid(),

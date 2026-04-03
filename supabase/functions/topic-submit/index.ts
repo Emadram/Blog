@@ -112,6 +112,7 @@ serve(async (req) => {
   const body = trimText(payload.body, 4000);
   const authorName = trimText(payload.author_name, 40) || "Anon";
   const isUnlisted = Boolean(payload.is_unlisted);
+  const voiceEnabled = Boolean(payload.voice_enabled);
 
   if (!title || title.length < 3) {
     return jsonResponse({ error: "Title must be at least 3 characters." }, 400);
@@ -143,9 +144,12 @@ serve(async (req) => {
       status: "open",
       is_locked: false,
       is_unlisted: isUnlisted,
+      voice_enabled: voiceEnabled,
       last_activity_at: now,
     })
-    .select("id, title, slug, body, author_name, status, is_locked, is_unlisted, created_at, last_activity_at")
+    .select(
+      "id, title, slug, body, author_name, status, is_locked, is_unlisted, voice_enabled, created_at, last_activity_at"
+    )
     .single();
 
   if (error) {

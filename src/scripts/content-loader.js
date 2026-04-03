@@ -172,6 +172,7 @@ const mapTopic = (row) => ({
   status: row.status,
   isLocked: Boolean(row.is_locked),
   isUnlisted: Boolean(row.is_unlisted),
+  voiceEnabled: Boolean(row.voice_enabled),
   createdAt: row.created_at,
   lastActivityAt: row.last_activity_at,
 });
@@ -309,7 +310,8 @@ const fetchTopics = async ({ status = 'open', includeUnlisted = false } = {}) =>
   }
 
   const params = {
-    select: 'id,title,slug,body,author_name,status,is_locked,is_unlisted,created_at,last_activity_at',
+    select:
+      'id,title,slug,body,author_name,status,is_locked,is_unlisted,voice_enabled,created_at,last_activity_at',
     order: 'last_activity_at.desc',
   };
 
@@ -335,7 +337,8 @@ const fetchTopicBySlug = async (slug) => {
   }
 
   const params = {
-    select: 'id,title,slug,body,author_name,status,is_locked,is_unlisted,created_at,last_activity_at',
+    select:
+      'id,title,slug,body,author_name,status,is_locked,is_unlisted,voice_enabled,created_at,last_activity_at',
     slug: `eq.${slug}`,
     limit: '1',
   };
@@ -826,7 +829,7 @@ const requestSearchAi = async (question, items) => {
   return typeof data?.answer === 'string' ? data.answer.trim() : '';
 };
 
-const requestTopicSubmit = async ({ title, body, authorName, isUnlisted }) => {
+const requestTopicSubmit = async ({ title, body, authorName, isUnlisted, voiceEnabled }) => {
   if (!hasSupabaseConfig()) {
     throw new Error('Missing Supabase configuration');
   }
@@ -843,6 +846,7 @@ const requestTopicSubmit = async ({ title, body, authorName, isUnlisted }) => {
       body,
       author_name: authorName,
       is_unlisted: Boolean(isUnlisted),
+      voice_enabled: Boolean(voiceEnabled),
     }),
   });
 
@@ -1481,7 +1485,11 @@ export const initTalkPage = async () => {
   const bodyInput = section.querySelector('[data-talk-body]');
   const authorInput = section.querySelector('[data-talk-author]');
   const unlistedInput = section.querySelector('[data-talk-unlisted]');
+  const voiceInput = section.querySelector('[data-talk-voice-toggle]');
   const formSubmit = section.querySelector('[data-talk-submit]');
+
+  const voiceSection = detailSection.querySelector('[data-talk-voice]');
+  const voiceFrame = detailSection.querySelector('[data-talk-voice-frame]');
 
   const setDetailVisible = (visible) => {
     detailSection.classList.toggle('hidden', !visible);
@@ -1496,8 +1504,27 @@ export const initTalkPage = async () => {
       topic.authorName || 'Anon',
       formatDate(topic.createdAt),
       topic.isUnlisted ? 'Unlisted' : null,
+      topic.voiceEnabled ? 'Voice on' : null,
     ].filter(Boolean);
     return entries;
+  };
+
+  const setVoiceEmbed = (topic) => {
+    if (!voiceSection || !voiceFrame) {
+      return;
+    }
+    if (!topic?.voiceEnabled) {
+      voiceSection.classList.add('hidden');
+      voiceSection.setAttribute('aria-hidden', 'true');
+      voiceFrame.removeAttribute('src');
+      return;
+    }
+    const roomName = `ruflo-${topic.slug}`;
+    voiceFrame.src = `https://meet.jit.si/${encodeURIComponent(
+      roomName
+    )}#config.prejoinPageEnabled=false`;
+    voiceSection.classList.remove('hidden');
+    voiceSection.setAttribute('aria-hidden', 'false');
   };
 
   const renderComments = (comments) => {
@@ -1545,6 +1572,7 @@ export const initTalkPage = async () => {
 
     setDetailVisible(true);
     detailSection.setAttribute('aria-busy', 'true');
+    setVoiceEmbed(null);
 
     try {
       const topic = await fetchTopicBySlug(slug);
@@ -1552,6 +1580,7 @@ export const initTalkPage = async () => {
         detailTitle.textContent = 'Topic not found.';
         detailBody.textContent = '';
         detailStatus.textContent = '';
+        setVoiceEmbed(null);
         detailSection.setAttribute('aria-busy', 'false');
         return;
       }
@@ -1581,6 +1610,8 @@ export const initTalkPage = async () => {
         });
       }
 
+      setVoiceEmbed(topic);
+
       const comments = await fetchTopicComments(topic.id);
       renderComments(comments);
 
@@ -1592,6 +1623,7 @@ export const initTalkPage = async () => {
       detailTitle.textContent = 'Unable to load topic.';
       detailBody.textContent = '';
       detailStatus.textContent = '';
+      setVoiceEmbed(null);
     } finally {
       detailSection.setAttribute('aria-busy', 'false');
     }
@@ -1732,6 +1764,7 @@ export const initTalkPage = async () => {
     const body = bodyInput.value.trim();
     const authorName = authorInput?.value.trim() || '';
     const isUnlisted = Boolean(unlistedInput?.checked);
+    const voiceEnabled = Boolean(voiceInput?.checked);
 
     if (!title || !body) {
       if (formStatus) {
@@ -1748,7 +1781,13 @@ export const initTalkPage = async () => {
     }
 
     try {
-      const topic = await requestTopicSubmit({ title, body, authorName, isUnlisted });
+      const topic = await requestTopicSubmit({
+        title,
+        body,
+        authorName,
+        isUnlisted,
+        voiceEnabled,
+      });
       if (!topic) {
         throw new Error('No topic returned');
       }
@@ -1759,6 +1798,9 @@ export const initTalkPage = async () => {
       }
       if (unlistedInput) {
         unlistedInput.checked = false;
+      }
+      if (voiceInput) {
+        voiceInput.checked = false;
       }
       updateUrl({ status: initialStatus, topic: topic.slug });
       renderDetail(topic.slug);

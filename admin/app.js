@@ -1135,6 +1135,7 @@ const renderTopicsList = () => {
     const flags = [
       topic.is_locked ? "Locked" : null,
       topic.is_unlisted ? "Unlisted" : null,
+      topic.voice_enabled ? "Voice" : null,
     ].filter(Boolean);
     const meta = joinMeta([
       statusLabel,
@@ -1830,6 +1831,7 @@ const fillTopicForm = (topic) => {
   form.querySelector("[name=\"status\"]").value = topic?.status || "open";
   form.querySelector("[name=\"is_locked\"]").checked = Boolean(topic?.is_locked);
   form.querySelector("[name=\"is_unlisted\"]").checked = Boolean(topic?.is_unlisted);
+  form.querySelector("[name=\"voice_enabled\"]").checked = Boolean(topic?.voice_enabled);
   renderTopicsList();
   loadTopicComments(topic?.id);
 };
@@ -2018,6 +2020,7 @@ const saveTopic = async () => {
     status: form.querySelector("[name=\"status\"]").value || "open",
     is_locked: form.querySelector("[name=\"is_locked\"]").checked,
     is_unlisted: form.querySelector("[name=\"is_unlisted\"]").checked,
+    voice_enabled: form.querySelector("[name=\"voice_enabled\"]").checked,
   };
 
   setStatus("Saving topic...", "info");
