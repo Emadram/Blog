@@ -1727,7 +1727,7 @@ export const initTalkPage = async () => {
     const roomName = `ruflo-${topic.slug}`;
     voiceFrame.src = `https://meet.jit.si/${encodeURIComponent(
       roomName
-    )}#config.prejoinPageEnabled=false&config.disableAudioOutputSelection=true`;
+    )}#config.prejoinPageEnabled=false&config.disableAudioOutputSelection=true&config.startWithAudioMuted=true&config.startWithVideoMuted=true&config.disableVideo=true&config.disableThirdPartyRequests=true`;
     voiceFrame.classList.remove('hidden');
 
     voiceSession.joined = true;
