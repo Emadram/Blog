@@ -1563,7 +1563,7 @@ export const initTalkPage = async () => {
         const preview = topic.body ? topic.body.slice(0, 140) : '';
         node.querySelector('[data-preview]').textContent = preview;
         const link = node.querySelector('[data-talk-link]');
-        link.href = `${BASE_URL}talk/${encodeURIComponent(topic.slug)}/`;
+        link.href = `${BASE_URL}talk/thread/?slug=${encodeURIComponent(topic.slug)}`;
         list.appendChild(node);
       });
       setSectionState(listSection, 'ready');
@@ -1585,7 +1585,7 @@ export const initTalkPage = async () => {
   const params = new URLSearchParams(window.location.search);
   const legacyTopic = params.get('topic');
   if (legacyTopic) {
-    window.location.replace(`${BASE_URL}talk/${encodeURIComponent(legacyTopic)}/`);
+    window.location.replace(`${BASE_URL}talk/thread/?slug=${encodeURIComponent(legacyTopic)}`);
     return;
   }
   const initialStatus = params.get('status') === 'archived' ? 'archived' : 'open';
@@ -1664,7 +1664,7 @@ export const initTalkPage = async () => {
       if (voiceInput) {
         voiceInput.checked = false;
       }
-      window.location.href = `${BASE_URL}talk/${encodeURIComponent(topic.slug)}/`;
+      window.location.href = `${BASE_URL}talk/thread/?slug=${encodeURIComponent(topic.slug)}`;
     } catch (error) {
       if (formStatus) {
         formStatus.textContent = error?.message || 'Unable to publish.';
@@ -1684,8 +1684,17 @@ export const initTalkThreadPage = async () => {
     return;
   }
 
-  const slug = section.dataset.talkSlug || '';
+  const params = new URLSearchParams(window.location.search);
+  const slug = section.dataset.talkSlug || params.get('slug') || params.get('topic') || '';
   if (!slug) {
+    const detailTitle = section.querySelector('[data-talk-detail-title]');
+    const detailBody = section.querySelector('[data-talk-detail-body]');
+    if (detailTitle) {
+      detailTitle.textContent = 'Topic not found.';
+    }
+    if (detailBody) {
+      detailBody.textContent = 'Missing topic link.';
+    }
     return;
   }
 

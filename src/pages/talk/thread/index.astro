@@ -1,13 +1,9 @@
 ---
-import ThreadLayout from '../../layouts/ThreadLayout.astro';
-
-export const prerender = false;
-
-const { slug } = Astro.params;
+import ThreadLayout from '../../../layouts/ThreadLayout.astro';
 ---
 
 <ThreadLayout title="Talk thread" description="Anonymous Talk topic thread.">
-  <section class="space-y-6" data-talk-thread data-talk-slug={slug} aria-live="polite" aria-busy="false">
+  <section class="space-y-6" data-talk-thread aria-live="polite" aria-busy="false">
     <header class="space-y-2">
       <p class="text-xs uppercase tracking-[0.3em] text-sky-700 dark:text-sky-200">Talk thread</p>
       <p class="text-sm text-slate-600 dark:text-slate-300">
@@ -156,7 +152,7 @@ const { slug } = Astro.params;
   </section>
 
   <script>
-    import { initTalkThreadPage } from '../../scripts/content-loader.js';
+    import { initTalkThreadPage } from '../../../scripts/content-loader.js';
 
     initTalkThreadPage();
   </script>
