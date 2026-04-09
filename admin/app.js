@@ -2580,8 +2580,7 @@ const copyTopicShareLink = async () => {
     return;
   }
   try {
-    const url = new URL("talk/", siteBaseUrl);
-    url.searchParams.set("topic", topic.slug);
+    const url = new URL(`talk/${topic.slug}/`, siteBaseUrl);
     await navigator.clipboard.writeText(url.toString());
     setStatus("Share link copied.", "success");
   } catch (error) {

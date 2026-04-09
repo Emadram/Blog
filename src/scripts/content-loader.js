@@ -1514,11 +1514,10 @@ export const initTalkPage = async () => {
   }
 
   const listSection = section.querySelector('[data-talk-list]');
-  const detailSection = section.querySelector('[data-talk-detail]');
   const filters = Array.from(section.querySelectorAll('[data-talk-filter]'));
   const form = section.querySelector('[data-talk-form]');
 
-  if (!listSection || !detailSection) {
+  if (!listSection) {
     return;
   }
 
@@ -1531,25 +1530,6 @@ export const initTalkPage = async () => {
   const template = listSection.querySelector('template');
   const empty = listSection.querySelector('[data-empty]');
 
-  const detailTitle = detailSection.querySelector('[data-talk-detail-title]');
-  const detailBody = detailSection.querySelector('[data-talk-detail-body]');
-  const detailMeta = detailSection.querySelector('[data-talk-detail-meta]');
-  const detailStatus = detailSection.querySelector('[data-talk-detail-status]');
-  const backButton = detailSection.querySelector('[data-talk-back]');
-  const copyButton = detailSection.querySelector('[data-talk-copy]');
-  const shareButton = detailSection.querySelector('[data-talk-share]');
-
-  const commentsSection = detailSection.querySelector('[data-talk-comments]');
-  const commentsEmpty = commentsSection?.querySelector('[data-talk-comments-empty]');
-  const commentsList = commentsSection?.querySelector('[data-talk-comments-list]');
-  const commentsTemplate = commentsSection?.querySelector('template');
-
-  const commentForm = detailSection.querySelector('[data-talk-comment-form]');
-  const commentBody = detailSection.querySelector('[data-talk-comment-body]');
-  const commentAuthor = detailSection.querySelector('[data-talk-comment-author]');
-  const commentStatus = detailSection.querySelector('[data-talk-comment-status]');
-  const commentSubmit = detailSection.querySelector('[data-talk-comment-submit]');
-
   const formStatus = section.querySelector('[data-talk-form-status]');
   const titleInput = section.querySelector('[data-talk-title]');
   const bodyInput = section.querySelector('[data-talk-body]');
@@ -1558,29 +1538,202 @@ export const initTalkPage = async () => {
   const voiceInput = section.querySelector('[data-talk-voice-toggle]');
   const formSubmit = section.querySelector('[data-talk-submit]');
 
-  const voiceSection = detailSection.querySelector('[data-talk-voice]');
-  const voiceFrame = detailSection.querySelector('[data-talk-voice-frame]');
-  const voiceJoin = detailSection.querySelector('[data-talk-voice-join]');
-  const voiceLeave = detailSection.querySelector('[data-talk-voice-leave]');
-  const voiceStatus = detailSection.querySelector('[data-talk-voice-status]');
-  const voiceCount = detailSection.querySelector('[data-talk-voice-count]');
+  const renderList = async (status) => {
+    if (!list || !template || !empty) {
+      return;
+    }
 
+    setSectionState(listSection, 'loading');
+    try {
+      const topics = await fetchTopics({ status, includeUnlisted: false });
+      list.innerHTML = '';
+      if (!topics.length) {
+        empty.textContent = 'No topics yet.';
+        setSectionState(listSection, 'empty');
+        return;
+      }
+
+      topics.forEach((topic) => {
+        const node = template.content.firstElementChild.cloneNode(true);
+        const meta = node.querySelector('[data-meta]');
+        meta.textContent = `${topic.status === 'archived' ? 'Archived' : 'Open'} · ${formatDate(
+          topic.lastActivityAt
+        )}`;
+        node.querySelector('[data-title]').textContent = topic.title;
+        const preview = topic.body ? topic.body.slice(0, 140) : '';
+        node.querySelector('[data-preview]').textContent = preview;
+        const link = node.querySelector('[data-talk-link]');
+        link.href = `${BASE_URL}talk/${encodeURIComponent(topic.slug)}/`;
+        list.appendChild(node);
+      });
+      setSectionState(listSection, 'ready');
+    } catch (error) {
+      setSectionState(listSection, 'error', getSupabaseErrorMessage('topics', error));
+    }
+  };
+
+  const updateUrl = (status) => {
+    const url = new URL(window.location.href);
+    if (status) {
+      url.searchParams.set('status', status);
+    } else {
+      url.searchParams.delete('status');
+    }
+    window.history.replaceState({}, '', url);
+  };
+
+  const params = new URLSearchParams(window.location.search);
+  const legacyTopic = params.get('topic');
+  if (legacyTopic) {
+    window.location.replace(`${BASE_URL}talk/${encodeURIComponent(legacyTopic)}/`);
+    return;
+  }
+  const initialStatus = params.get('status') === 'archived' ? 'archived' : 'open';
+  let activeStatus = initialStatus;
+
+  const setActiveFilter = (value) => {
+    filters.forEach((button) => {
+      const isActive = button.dataset.talkFilter === value;
+      button.setAttribute('aria-pressed', String(isActive));
+      button.classList.toggle('bg-sky-100', isActive);
+      button.classList.toggle('text-sky-700', isActive);
+      button.classList.toggle('border-sky-200', isActive);
+      button.classList.toggle('dark:bg-sky-500/10', isActive);
+      button.classList.toggle('dark:text-sky-200', isActive);
+      button.classList.toggle('dark:border-sky-500/40', isActive);
+    });
+  };
+
+  renderList(initialStatus);
+  setActiveFilter(initialStatus);
+
+  filters.forEach((button) => {
+    button.addEventListener('click', () => {
+      const status = button.dataset.talkFilter || 'open';
+      activeStatus = status;
+      setActiveFilter(status);
+      updateUrl(status);
+      renderList(status);
+    });
+  });
+
+  form?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!titleInput || !bodyInput) {
+      return;
+    }
+    const title = titleInput.value.trim();
+    const body = bodyInput.value.trim();
+    const authorName = authorInput?.value.trim() || '';
+    const isUnlisted = Boolean(unlistedInput?.checked);
+    const voiceEnabled = Boolean(voiceInput?.checked);
+
+    if (!title || !body) {
+      if (formStatus) {
+        formStatus.textContent = 'Title and topic are required.';
+      }
+      return;
+    }
+
+    if (formSubmit) {
+      formSubmit.disabled = true;
+    }
+    if (formStatus) {
+      formStatus.textContent = 'Publishing...';
+    }
+
+    try {
+      const topic = await requestTopicSubmit({
+        title,
+        body,
+        authorName,
+        isUnlisted,
+        voiceEnabled,
+      });
+      if (!topic) {
+        throw new Error('No topic returned');
+      }
+      titleInput.value = '';
+      bodyInput.value = '';
+      if (authorInput) {
+        authorInput.value = '';
+      }
+      if (unlistedInput) {
+        unlistedInput.checked = false;
+      }
+      if (voiceInput) {
+        voiceInput.checked = false;
+      }
+      window.location.href = `${BASE_URL}talk/${encodeURIComponent(topic.slug)}/`;
+    } catch (error) {
+      if (formStatus) {
+        formStatus.textContent = error?.message || 'Unable to publish.';
+      }
+    } finally {
+      if (formSubmit) {
+        formSubmit.disabled = false;
+      }
+    }
+  });
+
+};
+
+export const initTalkThreadPage = async () => {
+  const section = document.querySelector('[data-talk-thread]');
+  if (!section) {
+    return;
+  }
+
+  const slug = section.dataset.talkSlug || '';
+  if (!slug) {
+    return;
+  }
+
+  if (!hasSupabaseConfig()) {
+    const detailTitle = section.querySelector('[data-talk-detail-title]');
+    const detailBody = section.querySelector('[data-talk-detail-body]');
+    if (detailTitle) {
+      detailTitle.textContent = 'Unable to load topic.';
+    }
+    if (detailBody) {
+      detailBody.textContent = getSupabaseErrorMessage('topics');
+    }
+    return;
+  }
+
+  const detailTitle = section.querySelector('[data-talk-detail-title]');
+  const detailBody = section.querySelector('[data-talk-detail-body]');
+  const detailMeta = section.querySelector('[data-talk-detail-meta]');
+  const detailStatus = section.querySelector('[data-talk-detail-status]');
+  const backButton = section.querySelector('[data-talk-back]');
+  const copyButton = section.querySelector('[data-talk-copy]');
+  const shareButton = section.querySelector('[data-talk-share]');
+
+  const commentsSection = section.querySelector('[data-talk-comments]');
+  const commentsEmpty = commentsSection?.querySelector('[data-talk-comments-empty]');
+  const commentsList = commentsSection?.querySelector('[data-talk-comments-list]');
+  const commentsTemplate = commentsSection?.querySelector('template');
+
+  const commentForm = section.querySelector('[data-talk-comment-form]');
+  const commentBody = section.querySelector('[data-talk-comment-body]');
+  const commentAuthor = section.querySelector('[data-talk-comment-author]');
+  const commentStatus = section.querySelector('[data-talk-comment-status]');
+  const commentSubmit = section.querySelector('[data-talk-comment-submit]');
+
+  const voiceSection = section.querySelector('[data-talk-voice]');
+  const voiceFrame = section.querySelector('[data-talk-voice-frame]');
+  const voiceJoin = section.querySelector('[data-talk-voice-join]');
+  const voiceLeave = section.querySelector('[data-talk-voice-leave]');
+  const voiceStatus = section.querySelector('[data-talk-voice-status]');
+  const voiceCount = section.querySelector('[data-talk-voice-count]');
+
+  let currentTopic = null;
   let voiceSession = {
     topicId: null,
     sessionId: null,
     heartbeatId: null,
     joined: false,
     displayName: null,
-  };
-
-  const setDetailVisible = (visible) => {
-    detailSection.classList.toggle('hidden', !visible);
-    detailSection.setAttribute('aria-hidden', String(!visible));
-    listSection.classList.toggle('hidden', visible);
-    listSection.setAttribute('aria-hidden', String(visible));
-    if (!visible) {
-      void leaveVoice();
-    }
   };
 
   const formatMeta = (topic) => {
@@ -1806,29 +1959,33 @@ export const initTalkPage = async () => {
     }
   };
 
-  const renderDetail = async (slug) => {
-    if (!slug) {
-      return;
-    }
-
-    await leaveVoice();
-    setDetailVisible(true);
-    detailSection.setAttribute('aria-busy', 'true');
+  const renderThread = async () => {
+    section.setAttribute('aria-busy', 'true');
     setVoiceEmbed(null);
 
     try {
       const topic = await fetchTopicBySlug(slug);
       if (!topic) {
-        detailTitle.textContent = 'Topic not found.';
-        detailBody.textContent = '';
-        detailStatus.textContent = '';
+        if (detailTitle) {
+          detailTitle.textContent = 'Topic not found.';
+        }
+        if (detailBody) {
+          detailBody.textContent = '';
+        }
+        if (detailStatus) {
+          detailStatus.textContent = '';
+        }
         setVoiceEmbed(null);
-        detailSection.setAttribute('aria-busy', 'false');
         return;
       }
 
-      detailTitle.textContent = topic.title;
-      detailBody.textContent = topic.body;
+      currentTopic = topic;
+      if (detailTitle) {
+        detailTitle.textContent = topic.title;
+      }
+      if (detailBody) {
+        detailBody.textContent = topic.body;
+      }
       const statusMessages = [];
       if (topic.status === 'archived') {
         statusMessages.push('Archived');
@@ -1839,9 +1996,11 @@ export const initTalkPage = async () => {
       if (topic.isUnlisted) {
         statusMessages.push('Unlisted');
       }
-      detailStatus.textContent = statusMessages.length
-        ? `Status: ${statusMessages.join(' · ')}`
-        : '';
+      if (detailStatus) {
+        detailStatus.textContent = statusMessages.length
+          ? `Status: ${statusMessages.join(' · ')}`
+          : '';
+      }
 
       if (detailMeta) {
         detailMeta.innerHTML = '';
@@ -1859,136 +2018,24 @@ export const initTalkPage = async () => {
 
       const locked = topic.isLocked || topic.status === 'archived';
       setCommentFormState(locked, locked ? 'Replies are closed.' : '');
-      commentForm.dataset.topicId = topic.id;
-      commentForm.dataset.topicSlug = topic.slug;
     } catch (error) {
-      detailTitle.textContent = 'Unable to load topic.';
-      detailBody.textContent = '';
-      detailStatus.textContent = '';
+      if (detailTitle) {
+        detailTitle.textContent = 'Unable to load topic.';
+      }
+      if (detailBody) {
+        detailBody.textContent = '';
+      }
+      if (detailStatus) {
+        detailStatus.textContent = '';
+      }
       setVoiceEmbed(null);
     } finally {
-      detailSection.setAttribute('aria-busy', 'false');
+      section.setAttribute('aria-busy', 'false');
     }
   };
-
-  const renderList = async (status) => {
-    if (!list || !template || !empty) {
-      return;
-    }
-
-    setSectionState(listSection, 'loading');
-    try {
-      const topics = await fetchTopics({ status, includeUnlisted: false });
-      list.innerHTML = '';
-      if (!topics.length) {
-        empty.textContent = 'No topics yet.';
-        setSectionState(listSection, 'empty');
-        return;
-      }
-
-      topics.forEach((topic) => {
-        const node = template.content.firstElementChild.cloneNode(true);
-        const meta = node.querySelector('[data-meta]');
-        meta.textContent = `${topic.status === 'archived' ? 'Archived' : 'Open'} · ${formatDate(
-          topic.lastActivityAt
-        )}`;
-        node.querySelector('[data-title]').textContent = topic.title;
-        const preview = topic.body ? topic.body.slice(0, 140) : '';
-        node.querySelector('[data-preview]').textContent = preview;
-        const link = node.querySelector('[data-talk-link]');
-        const url = new URL(window.location.href);
-        url.searchParams.set('topic', topic.slug);
-        url.searchParams.delete('status');
-        link.href = url.toString();
-        list.appendChild(node);
-      });
-      setSectionState(listSection, 'ready');
-    } catch (error) {
-      setSectionState(listSection, 'error', getSupabaseErrorMessage('topics', error));
-    }
-  };
-
-  const updateUrl = ({ status, topic }) => {
-    const url = new URL(window.location.href);
-    if (status) {
-      url.searchParams.set('status', status);
-    } else {
-      url.searchParams.delete('status');
-    }
-    if (topic) {
-      url.searchParams.set('topic', topic);
-    } else {
-      url.searchParams.delete('topic');
-    }
-    window.history.replaceState({}, '', url);
-  };
-
-  const params = new URLSearchParams(window.location.search);
-  const initialStatus = params.get('status') === 'archived' ? 'archived' : 'open';
-  const initialTopic = params.get('topic');
-  let activeStatus = initialStatus;
-
-  const setActiveFilter = (value) => {
-    filters.forEach((button) => {
-      const isActive = button.dataset.talkFilter === value;
-      button.setAttribute('aria-pressed', String(isActive));
-      button.classList.toggle('bg-sky-100', isActive);
-      button.classList.toggle('text-sky-700', isActive);
-      button.classList.toggle('border-sky-200', isActive);
-      button.classList.toggle('dark:bg-sky-500/10', isActive);
-      button.classList.toggle('dark:text-sky-200', isActive);
-      button.classList.toggle('dark:border-sky-500/40', isActive);
-    });
-  };
-
-  if (initialTopic) {
-    setDetailVisible(true);
-    renderDetail(initialTopic);
-  } else {
-    setDetailVisible(false);
-    renderList(initialStatus);
-  }
-  setActiveFilter(initialStatus);
-
-  filters.forEach((button) => {
-    button.addEventListener('click', () => {
-      const status = button.dataset.talkFilter || 'open';
-      activeStatus = status;
-      setActiveFilter(status);
-      updateUrl({ status, topic: null });
-      setDetailVisible(false);
-      renderList(status);
-    });
-  });
-
-  voiceJoin?.addEventListener('click', async () => {
-    const topicId = commentForm?.dataset.topicId;
-    const topicSlug = commentForm?.dataset.topicSlug;
-    if (!topicId || !topicSlug) {
-      return;
-    }
-    await joinVoice({ id: topicId, slug: topicSlug });
-  });
-
-  voiceLeave?.addEventListener('click', async () => {
-    await leaveVoice();
-    setVoiceStatus('Left voice room.');
-  });
-
-  window.addEventListener('beforeunload', () => {
-    if (voiceSession.joined && voiceSession.topicId && voiceSession.sessionId) {
-      void requestVoiceLeave({
-        topicId: voiceSession.topicId,
-        sessionId: voiceSession.sessionId,
-        keepalive: true,
-      });
-    }
-  });
 
   backButton?.addEventListener('click', () => {
-    updateUrl({ status: activeStatus, topic: null });
-    setDetailVisible(false);
-    renderList(activeStatus);
+    window.location.href = `${BASE_URL}talk/`;
   });
 
   copyButton?.addEventListener('click', async () => {
@@ -2021,70 +2068,31 @@ export const initTalkPage = async () => {
     }
   });
 
-  form?.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    if (!titleInput || !bodyInput) {
+  voiceJoin?.addEventListener('click', async () => {
+    if (!currentTopic) {
       return;
     }
-    const title = titleInput.value.trim();
-    const body = bodyInput.value.trim();
-    const authorName = authorInput?.value.trim() || '';
-    const isUnlisted = Boolean(unlistedInput?.checked);
-    const voiceEnabled = Boolean(voiceInput?.checked);
+    await joinVoice(currentTopic);
+  });
 
-    if (!title || !body) {
-      if (formStatus) {
-        formStatus.textContent = 'Title and topic are required.';
-      }
-      return;
-    }
+  voiceLeave?.addEventListener('click', async () => {
+    await leaveVoice();
+    setVoiceStatus('Left voice room.');
+  });
 
-    if (formSubmit) {
-      formSubmit.disabled = true;
-    }
-    if (formStatus) {
-      formStatus.textContent = 'Publishing...';
-    }
-
-    try {
-      const topic = await requestTopicSubmit({
-        title,
-        body,
-        authorName,
-        isUnlisted,
-        voiceEnabled,
+  window.addEventListener('beforeunload', () => {
+    if (voiceSession.joined && voiceSession.topicId && voiceSession.sessionId) {
+      void requestVoiceLeave({
+        topicId: voiceSession.topicId,
+        sessionId: voiceSession.sessionId,
+        keepalive: true,
       });
-      if (!topic) {
-        throw new Error('No topic returned');
-      }
-      titleInput.value = '';
-      bodyInput.value = '';
-      if (authorInput) {
-        authorInput.value = '';
-      }
-      if (unlistedInput) {
-        unlistedInput.checked = false;
-      }
-      if (voiceInput) {
-        voiceInput.checked = false;
-      }
-      updateUrl({ status: initialStatus, topic: topic.slug });
-      renderDetail(topic.slug);
-    } catch (error) {
-      if (formStatus) {
-        formStatus.textContent = error?.message || 'Unable to publish.';
-      }
-    } finally {
-      if (formSubmit) {
-        formSubmit.disabled = false;
-      }
     }
   });
 
   commentForm?.addEventListener('submit', async (event) => {
     event.preventDefault();
-    const topicId = commentForm.dataset.topicId;
-    if (!topicId || !commentBody) {
+    if (!currentTopic || !commentBody) {
       return;
     }
     const body = commentBody.value.trim();
@@ -2103,7 +2111,11 @@ export const initTalkPage = async () => {
     }
 
     try {
-      const comment = await requestCommentSubmit({ topicId, body, authorName });
+      const comment = await requestCommentSubmit({
+        topicId: currentTopic.id,
+        body,
+        authorName,
+      });
       if (!comment) {
         throw new Error('No comment returned');
       }
@@ -2111,7 +2123,7 @@ export const initTalkPage = async () => {
       if (commentAuthor) {
         commentAuthor.value = '';
       }
-      const comments = await fetchTopicComments(topicId);
+      const comments = await fetchTopicComments(currentTopic.id);
       renderComments(comments);
       if (commentStatus) {
         commentStatus.textContent = '';
@@ -2126,6 +2138,8 @@ export const initTalkPage = async () => {
       }
     }
   });
+
+  await renderThread();
 };
 
 export const initBlogPage = async () => {

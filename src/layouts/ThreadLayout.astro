@@ -1,0 +1,161 @@
+---
+import '../styles/global.css';
+
+const {
+  title = 'Ruflo Developer Blog',
+  description = 'Notes, experiments, and project write-ups from the build desk.',
+  image = '/og-default.svg',
+  type = 'website',
+} = Astro.props;
+const baseUrl = import.meta.env.BASE_URL;
+const plausibleDomain = import.meta.env.PUBLIC_PLAUSIBLE_DOMAIN ?? 'emadram.github.io';
+const enableAnalytics = import.meta.env.PROD && plausibleDomain;
+const supabaseUrl = import.meta.env.PUBLIC_SUPABASE_URL ?? '';
+const supabaseKey = import.meta.env.PUBLIC_SUPABASE_ANON_KEY ?? '';
+const canonicalUrl = (Astro.site ? new URL(Astro.url.pathname, Astro.site) : Astro.url).toString();
+const imagePath = image.startsWith('http') ? image : `${baseUrl}${image.replace(/^\//, '')}`;
+const imageUrl = imagePath.startsWith('http')
+  ? imagePath
+  : new URL(imagePath, Astro.site ?? Astro.url).toString();
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" type="image/svg+xml" href={`${baseUrl}favicon.svg`} />
+    <link rel="icon" href={`${baseUrl}favicon.ico`} />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="generator" content={Astro.generator} />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonicalUrl} />
+    <meta name="theme-color" content="#020617" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content={type} />
+    <meta property="og:url" content={canonicalUrl} />
+    <meta property="og:image" content={imageUrl} />
+    <meta property="og:site_name" content="Ruflo Dev Blog" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={imageUrl} />
+    <link
+      rel="alternate"
+      type="application/rss+xml"
+      title="Ruflo Developer Blog"
+      href={`${baseUrl}rss.xml`}
+    />
+    {enableAnalytics && (
+      <script defer data-domain={plausibleDomain} src="https://plausible.io/js/script.js"></script>
+    )}
+    <script is:inline>
+      (() => {
+        const storageKey = 'ruflo-theme';
+        const root = document.documentElement;
+
+        const getStoredTheme = () => {
+          try {
+            return localStorage.getItem(storageKey);
+          } catch (error) {
+            return null;
+          }
+        };
+
+        const getPreferredTheme = () => {
+          const stored = getStoredTheme();
+          if (stored === 'light' || stored === 'dark') {
+            return stored;
+          }
+
+          if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+            return 'dark';
+          }
+
+          return 'light';
+        };
+
+        const applyTheme = (theme) => {
+          root.classList.toggle('dark', theme === 'dark');
+          root.dataset.theme = theme;
+        };
+
+        applyTheme(getPreferredTheme());
+
+        const mediaQuery = window.matchMedia
+          ? window.matchMedia('(prefers-color-scheme: dark)')
+          : null;
+
+        if (mediaQuery) {
+          const handleChange = (event) => {
+            try {
+              if (localStorage.getItem(storageKey)) {
+                return;
+              }
+            } catch (error) {
+              // Fall back to system preference.
+            }
+
+            applyTheme(event.matches ? 'dark' : 'light');
+          };
+
+          if (typeof mediaQuery.addEventListener === 'function') {
+            mediaQuery.addEventListener('change', handleChange);
+          } else if (typeof mediaQuery.addListener === 'function') {
+            mediaQuery.addListener(handleChange);
+          }
+        }
+      })();
+    </script>
+    <script is:inline define:vars={{ supabaseUrl, supabaseKey }}>
+      (() => {
+        if (!supabaseUrl || !supabaseKey) {
+          return;
+        }
+
+        const path = window.location.pathname || '/';
+        if (path.includes('/admin')) {
+          return;
+        }
+
+        try {
+          const storageKey = `ruflo-visit:${path}`;
+          if (sessionStorage.getItem(storageKey)) {
+            return;
+          }
+          sessionStorage.setItem(storageKey, '1');
+        } catch (error) {
+          // Ignore storage errors.
+        }
+
+        fetch(`${supabaseUrl}/functions/v1/visit-log`, {
+          method: 'POST',
+          headers: {
+            apikey: supabaseKey,
+            Authorization: `Bearer ${supabaseKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            path,
+            referrer: document.referrer || null,
+          }),
+          keepalive: true,
+        }).catch(() => {});
+      })();
+    </script>
+  </head>
+  <body class="selection:bg-sky-300/20 selection:text-slate-900 dark:selection:text-sky-100">
+    <div class="relative min-h-screen overflow-hidden bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+      <div class="pointer-events-none absolute inset-0 -z-10">
+        <div class="absolute -top-48 left-1/2 h-[32rem] w-[32rem] -translate-x-1/2 rounded-full bg-sky-400/20 blur-[120px] dark:bg-sky-500/15"></div>
+        <div class="absolute bottom-0 right-0 h-[24rem] w-[24rem] translate-x-1/3 translate-y-1/3 rounded-full bg-blue-300/20 blur-[120px] dark:bg-blue-400/10"></div>
+        <div class="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(226,232,240,0.8),_transparent_60%)] dark:bg-[radial-gradient(circle_at_top,_rgba(15,23,42,0.6),_transparent_55%)]"></div>
+      </div>
+
+      <main class="relative mx-auto w-full max-w-4xl px-6 pb-16 pt-10">
+        <slot />
+      </main>
+    </div>
+  </body>
+</html>
