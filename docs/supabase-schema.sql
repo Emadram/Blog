@@ -108,12 +108,16 @@ create table if not exists public.topics (
   is_unlisted boolean not null default false,
   voice_enabled boolean not null default false,
   last_activity_at timestamptz not null default now(),
+  created_by uuid references auth.users (id),
+  updated_by uuid references auth.users (id),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
 alter table public.topics
-  add column if not exists voice_enabled boolean not null default false;
+  add column if not exists voice_enabled boolean not null default false,
+  add column if not exists created_by uuid references auth.users (id),
+  add column if not exists updated_by uuid references auth.users (id);
 
 create table if not exists public.topic_comments (
   id uuid primary key default gen_random_uuid(),

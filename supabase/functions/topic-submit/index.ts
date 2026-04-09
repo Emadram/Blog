@@ -153,7 +153,10 @@ serve(async (req) => {
     .single();
 
   if (error) {
-    return jsonResponse({ error: "Failed to create topic." }, 500);
+    return jsonResponse(
+      { error: "Failed to create topic.", details: error.message || null },
+      500
+    );
   }
 
   await supabase.from("topic_audit").insert({
