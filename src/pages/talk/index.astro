@@ -179,13 +179,34 @@ const baseUrl = import.meta.env.BASE_URL;
           <div>
             <p class="text-xs uppercase tracking-[0.3em] text-slate-500 dark:text-slate-400">Voice room</p>
             <p class="text-sm text-slate-600 dark:text-slate-300">
-              Live audio via Jitsi. Share the link before joining.
+              Live audio via Jitsi. Max 10 people. Share the link before joining.
             </p>
           </div>
+          <div class="flex flex-wrap items-center gap-3">
+            <span
+              class="hidden text-[11px] uppercase tracking-[0.3em] text-slate-400 dark:text-slate-500"
+              data-talk-voice-count
+            ></span>
+            <button
+              class="rounded-full border border-slate-200 px-3 py-1 text-[11px] uppercase tracking-[0.3em] text-slate-600 transition hover:border-sky-400/60 hover:text-sky-700 dark:border-slate-800/60 dark:text-slate-300 dark:hover:text-sky-200"
+              type="button"
+              data-talk-voice-join
+            >
+              Join voice
+            </button>
+            <button
+              class="hidden rounded-full border border-slate-200 px-3 py-1 text-[11px] uppercase tracking-[0.3em] text-slate-600 transition hover:border-sky-400/60 hover:text-sky-700 dark:border-slate-800/60 dark:text-slate-300 dark:hover:text-sky-200"
+              type="button"
+              data-talk-voice-leave
+            >
+              Leave
+            </button>
+          </div>
         </div>
+        <p class="mt-2 text-xs text-slate-500 dark:text-slate-400" data-talk-voice-status></p>
         <div class="mt-4 overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800/60">
           <iframe
-            class="h-[360px] w-full bg-slate-100 dark:bg-slate-900"
+            class="hidden h-[360px] w-full bg-slate-100 dark:bg-slate-900"
             title="Voice chat"
             allow="microphone; camera; fullscreen; display-capture"
             data-talk-voice-frame

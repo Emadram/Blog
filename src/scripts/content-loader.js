@@ -19,6 +19,10 @@ const SEARCH_AI_FUNCTION = 'search-ai';
 const SEARCH_AI_MAX_ITEMS = 5;
 const TALK_TOPIC_FUNCTION = 'topic-submit';
 const TALK_COMMENT_FUNCTION = 'comment-submit';
+const TALK_VOICE_JOIN_FUNCTION = 'voice-join';
+const TALK_VOICE_HEARTBEAT_FUNCTION = 'voice-heartbeat';
+const TALK_VOICE_LEAVE_FUNCTION = 'voice-leave';
+const TALK_VOICE_HEARTBEAT_MS = 60000;
 const memoryCache = new Map();
 
 const canUseSessionStorage = () => typeof sessionStorage !== 'undefined';
@@ -883,6 +887,72 @@ const requestCommentSubmit = async ({ topicId, body, authorName }) => {
   return data?.comment || null;
 };
 
+const requestVoiceJoin = async ({ topicId, sessionId, displayName }) => {
+  if (!hasSupabaseConfig()) {
+    throw new Error('Missing Supabase configuration');
+  }
+
+  const response = await fetch(`${SUPABASE_URL}/functions/v1/${TALK_VOICE_JOIN_FUNCTION}`, {
+    method: 'POST',
+    headers: {
+      apikey: SUPABASE_KEY,
+      Authorization: `Bearer ${SUPABASE_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      topic_id: topicId,
+      session_id: sessionId,
+      display_name: displayName || null,
+    }),
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok && response.status !== 429) {
+    throw new Error(data?.error || 'Voice join failed');
+  }
+  return data;
+};
+
+const requestVoiceHeartbeat = async ({ topicId, sessionId, displayName }) => {
+  if (!hasSupabaseConfig()) {
+    return;
+  }
+
+  await fetch(`${SUPABASE_URL}/functions/v1/${TALK_VOICE_HEARTBEAT_FUNCTION}`, {
+    method: 'POST',
+    headers: {
+      apikey: SUPABASE_KEY,
+      Authorization: `Bearer ${SUPABASE_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      topic_id: topicId,
+      session_id: sessionId,
+      display_name: displayName || null,
+    }),
+  }).catch(() => undefined);
+};
+
+const requestVoiceLeave = async ({ topicId, sessionId, keepalive = false }) => {
+  if (!hasSupabaseConfig()) {
+    return;
+  }
+
+  await fetch(`${SUPABASE_URL}/functions/v1/${TALK_VOICE_LEAVE_FUNCTION}`, {
+    method: 'POST',
+    headers: {
+      apikey: SUPABASE_KEY,
+      Authorization: `Bearer ${SUPABASE_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      topic_id: topicId,
+      session_id: sessionId,
+    }),
+    keepalive,
+  }).catch(() => undefined);
+};
+
 const renderAiSources = (container, items) => {
   if (!container) {
     return;
@@ -1490,12 +1560,27 @@ export const initTalkPage = async () => {
 
   const voiceSection = detailSection.querySelector('[data-talk-voice]');
   const voiceFrame = detailSection.querySelector('[data-talk-voice-frame]');
+  const voiceJoin = detailSection.querySelector('[data-talk-voice-join]');
+  const voiceLeave = detailSection.querySelector('[data-talk-voice-leave]');
+  const voiceStatus = detailSection.querySelector('[data-talk-voice-status]');
+  const voiceCount = detailSection.querySelector('[data-talk-voice-count]');
+
+  let voiceSession = {
+    topicId: null,
+    sessionId: null,
+    heartbeatId: null,
+    joined: false,
+    displayName: null,
+  };
 
   const setDetailVisible = (visible) => {
     detailSection.classList.toggle('hidden', !visible);
     detailSection.setAttribute('aria-hidden', String(!visible));
     listSection.classList.toggle('hidden', visible);
     listSection.setAttribute('aria-hidden', String(visible));
+    if (!visible) {
+      void leaveVoice();
+    }
   };
 
   const formatMeta = (topic) => {
@@ -1509,6 +1594,156 @@ export const initTalkPage = async () => {
     return entries;
   };
 
+  const getVoiceSessionId = (topicId) => {
+    const key = `ruflo-voice:${topicId}`;
+    if (canUseSessionStorage()) {
+      const stored = sessionStorage.getItem(key);
+      if (stored) {
+        return stored;
+      }
+    }
+
+    const generated = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `session-${Math.random().toString(36).slice(2)}-${Date.now()}`;
+
+    if (canUseSessionStorage()) {
+      try {
+        sessionStorage.setItem(key, generated);
+      } catch (error) {
+        // Ignore storage errors.
+      }
+    }
+    return generated;
+  };
+
+  const setVoiceStatus = (message) => {
+    if (voiceStatus) {
+      voiceStatus.textContent = message || '';
+    }
+  };
+
+  const setVoiceCount = (activeCount, limit) => {
+    if (!voiceCount) {
+      return;
+    }
+    if (typeof activeCount !== 'number' || typeof limit !== 'number') {
+      voiceCount.textContent = '';
+      voiceCount.classList.add('hidden');
+      return;
+    }
+    voiceCount.textContent = `${activeCount}/${limit} active`;
+    voiceCount.classList.remove('hidden');
+  };
+
+  const stopVoiceHeartbeat = () => {
+    if (voiceSession.heartbeatId) {
+      clearInterval(voiceSession.heartbeatId);
+      voiceSession.heartbeatId = null;
+    }
+  };
+
+  const clearVoiceFrame = () => {
+    if (!voiceFrame) {
+      return;
+    }
+    voiceFrame.removeAttribute('src');
+    voiceFrame.classList.add('hidden');
+  };
+
+  const updateVoiceControls = ({ joined, disabled }) => {
+    if (voiceJoin) {
+      voiceJoin.disabled = Boolean(disabled);
+      voiceJoin.classList.toggle('hidden', joined);
+    }
+    if (voiceLeave) {
+      voiceLeave.classList.toggle('hidden', !joined);
+    }
+  };
+
+  const leaveVoice = async (options = {}) => {
+    if (voiceSession.joined && voiceSession.topicId && voiceSession.sessionId) {
+      await requestVoiceLeave({
+        topicId: voiceSession.topicId,
+        sessionId: voiceSession.sessionId,
+        keepalive: Boolean(options.keepalive),
+      });
+    }
+    stopVoiceHeartbeat();
+    voiceSession = {
+      topicId: null,
+      sessionId: null,
+      heartbeatId: null,
+      joined: false,
+      displayName: null,
+    };
+    updateVoiceControls({ joined: false, disabled: false });
+    clearVoiceFrame();
+    setVoiceStatus('');
+    setVoiceCount(null, null);
+  };
+
+  const joinVoice = async (topic) => {
+    if (!topic || !voiceFrame || !voiceJoin) {
+      return;
+    }
+    if (voiceSession.joined && voiceSession.topicId === topic.id) {
+      return;
+    }
+    await leaveVoice();
+
+    const sessionId = getVoiceSessionId(topic.id);
+    voiceSession = {
+      topicId: topic.id,
+      sessionId,
+      heartbeatId: null,
+      joined: false,
+      displayName: null,
+    };
+
+    updateVoiceControls({ joined: false, disabled: true });
+    setVoiceStatus('Joining voice room...');
+
+    let result = null;
+    try {
+      result = await requestVoiceJoin({
+        topicId: topic.id,
+        sessionId,
+        displayName: voiceSession.displayName,
+      });
+    } catch (error) {
+      updateVoiceControls({ joined: false, disabled: false });
+      setVoiceStatus(error?.message || 'Unable to join voice room.');
+      return;
+    }
+
+    if (!result?.allowed) {
+      updateVoiceControls({ joined: false, disabled: false });
+      setVoiceCount(result?.activeCount, result?.limit);
+      setVoiceStatus(result?.error || 'Voice room is full.');
+      return;
+    }
+
+    const roomName = `ruflo-${topic.slug}`;
+    voiceFrame.src = `https://meet.jit.si/${encodeURIComponent(
+      roomName
+    )}#config.prejoinPageEnabled=false`;
+    voiceFrame.classList.remove('hidden');
+
+    voiceSession.joined = true;
+    updateVoiceControls({ joined: true, disabled: false });
+    setVoiceCount(result?.activeCount, result?.limit);
+    setVoiceStatus('Connected.');
+
+    voiceSession.heartbeatId = setInterval(() => {
+      requestVoiceHeartbeat({
+        topicId: topic.id,
+        sessionId,
+        displayName: voiceSession.displayName,
+      });
+    }, TALK_VOICE_HEARTBEAT_MS);
+  };
+
   const setVoiceEmbed = (topic) => {
     if (!voiceSection || !voiceFrame) {
       return;
@@ -1516,15 +1751,21 @@ export const initTalkPage = async () => {
     if (!topic?.voiceEnabled) {
       voiceSection.classList.add('hidden');
       voiceSection.setAttribute('aria-hidden', 'true');
-      voiceFrame.removeAttribute('src');
+      void leaveVoice();
       return;
     }
-    const roomName = `ruflo-${topic.slug}`;
-    voiceFrame.src = `https://meet.jit.si/${encodeURIComponent(
-      roomName
-    )}#config.prejoinPageEnabled=false`;
     voiceSection.classList.remove('hidden');
     voiceSection.setAttribute('aria-hidden', 'false');
+    clearVoiceFrame();
+    updateVoiceControls({ joined: false, disabled: false });
+    setVoiceStatus('');
+    setVoiceCount(null, null);
+
+    const isLocked = topic.isLocked || topic.status === 'archived';
+    if (isLocked) {
+      updateVoiceControls({ joined: false, disabled: true });
+      setVoiceStatus('Voice room is locked.');
+    }
   };
 
   const renderComments = (comments) => {
@@ -1570,6 +1811,7 @@ export const initTalkPage = async () => {
       return;
     }
 
+    await leaveVoice();
     setDetailVisible(true);
     detailSection.setAttribute('aria-busy', 'true');
     setVoiceEmbed(null);
@@ -1717,6 +1959,30 @@ export const initTalkPage = async () => {
       setDetailVisible(false);
       renderList(status);
     });
+  });
+
+  voiceJoin?.addEventListener('click', async () => {
+    const topicId = commentForm?.dataset.topicId;
+    const topicSlug = commentForm?.dataset.topicSlug;
+    if (!topicId || !topicSlug) {
+      return;
+    }
+    await joinVoice({ id: topicId, slug: topicSlug });
+  });
+
+  voiceLeave?.addEventListener('click', async () => {
+    await leaveVoice();
+    setVoiceStatus('Left voice room.');
+  });
+
+  window.addEventListener('beforeunload', () => {
+    if (voiceSession.joined && voiceSession.topicId && voiceSession.sessionId) {
+      void requestVoiceLeave({
+        topicId: voiceSession.topicId,
+        sessionId: voiceSession.sessionId,
+        keepalive: true,
+      });
+    }
   });
 
   backButton?.addEventListener('click', () => {

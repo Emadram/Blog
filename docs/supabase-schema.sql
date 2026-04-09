@@ -134,10 +134,23 @@ create table if not exists public.topic_audit (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.topic_voice_sessions (
+  id bigserial primary key,
+  topic_id uuid not null references public.topics (id) on delete cascade,
+  session_id text not null,
+  display_name text,
+  ip text,
+  user_agent text,
+  last_seen_at timestamptz not null default now(),
+  created_at timestamptz not null default now()
+);
+
 create index if not exists topics_status_activity_idx on public.topics (status, last_activity_at desc);
 create index if not exists topics_slug_idx on public.topics (slug);
 create index if not exists topic_comments_topic_idx on public.topic_comments (topic_id, created_at desc);
 create index if not exists topic_audit_ip_idx on public.topic_audit (ip, created_at desc);
+create unique index if not exists topic_voice_sessions_unique_idx on public.topic_voice_sessions (topic_id, session_id);
+create index if not exists topic_voice_sessions_active_idx on public.topic_voice_sessions (topic_id, last_seen_at desc);
 
 -- Enable RLS
 alter table public.posts enable row level security;
@@ -146,6 +159,7 @@ alter table public.projects enable row level security;
 alter table public.topics enable row level security;
 alter table public.topic_comments enable row level security;
 alter table public.topic_audit enable row level security;
+alter table public.topic_voice_sessions enable row level security;
 
 create or replace function public.set_updated_at()
 returns trigger
@@ -278,6 +292,12 @@ create policy "Admins can manage topic comments"
 drop policy if exists "Admins can read topic audit" on public.topic_audit;
 create policy "Admins can read topic audit"
   on public.topic_audit
+  for select
+  using (public.is_admin());
+
+drop policy if exists "Admins can read topic voice sessions" on public.topic_voice_sessions;
+create policy "Admins can read topic voice sessions"
+  on public.topic_voice_sessions
   for select
   using (public.is_admin());
 
