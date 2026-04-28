@@ -1,5 +1,5 @@
 ---
-title: "Ruflo dev blog kickoff"
+title: "Emad dev blog kickoff"
 description: "Setting the baseline for the Astro + Tailwind build."
 date: 2026-04-01
 tags: ["Astro", "Tailwind", "Setup"]

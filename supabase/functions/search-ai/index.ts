@@ -219,7 +219,7 @@ serve(async (req) => {
       Authorization: `Bearer ${sanitizedOpenRouterKey}`,
       "Content-Type": "application/json",
       "HTTP-Referer": req.headers.get("origin") || "",
-      "X-Title": "Ruflo Site Search",
+      "X-Title": "Emad Site Search",
     },
     body: JSON.stringify({
       model: OPENROUTER_MODEL,

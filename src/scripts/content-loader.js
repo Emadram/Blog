@@ -27,7 +27,7 @@ const memoryCache = new Map();
 
 const canUseSessionStorage = () => typeof sessionStorage !== 'undefined';
 
-const getCacheKey = (key) => `ruflo-cache:${key}`;
+const getCacheKey = (key) => `emad-cache:${key}`;
 
 const shouldBypassCache = () => {
   if (typeof window === 'undefined') {
@@ -1848,7 +1848,7 @@ export const initTalkThreadPage = async () => {
   };
 
   const getVoiceSessionId = (topicId) => {
-    const key = `ruflo-voice:${topicId}`;
+    const key = `emad-voice:${topicId}`;
     if (canUseSessionStorage()) {
       const stored = sessionStorage.getItem(key);
       if (stored) {
@@ -1978,7 +1978,7 @@ export const initTalkThreadPage = async () => {
       return;
     }
 
-    const roomName = `ruflo-${topic.slug}`;
+    const roomName = `emad-${topic.slug}`;
     const roomUrlBase = getJitsiBaseUrl();
     voiceFrame.src = `${roomUrlBase}/${encodeURIComponent(
       roomName
@@ -2314,7 +2314,7 @@ export const initBlogPage = async () => {
       const content = detailSection.querySelector('[data-detail-content]');
       const marked = await loadMarked();
       content.innerHTML = renderMarkdown(marked, post.contentMd || '');
-      document.title = `${post.title}${previewToken ? ' (Preview)' : ''} | Ruflo Developer Blog`;
+      document.title = `${post.title}${previewToken ? ' (Preview)' : ''} | Emad Dev Blog`;
       await renderRelatedSection(post, detailSection);
       setSectionState(detailSection, 'ready');
     } catch (error) {

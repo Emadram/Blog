@@ -1,4 +1,4 @@
-# Ruflo Admin App
+# Emad Admin App
 
 This is a standalone admin app for managing posts, news links, and projects in Supabase.
 

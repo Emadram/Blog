@@ -2,7 +2,7 @@
 import '../styles/global.css';
 
 const {
-  title = 'Ruflo Developer Blog',
+  title = 'Emad Dev Blog',
   description = 'Notes, experiments, and project write-ups from the build desk.',
   image = '/og-default.svg',
   type = 'website',
@@ -36,7 +36,7 @@ const imageUrl = imagePath.startsWith('http')
     <meta property="og:type" content={type} />
     <meta property="og:url" content={canonicalUrl} />
     <meta property="og:image" content={imageUrl} />
-    <meta property="og:site_name" content="Ruflo Dev Blog" />
+    <meta property="og:site_name" content="Emad Dev Blog" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content={title} />
     <meta name="twitter:description" content={description} />
@@ -44,7 +44,7 @@ const imageUrl = imagePath.startsWith('http')
     <link
       rel="alternate"
       type="application/rss+xml"
-      title="Ruflo Developer Blog"
+      title="Emad Dev Blog"
       href={`${baseUrl}rss.xml`}
     />
     {enableAnalytics && (
@@ -52,7 +52,7 @@ const imageUrl = imagePath.startsWith('http')
     )}
     <script is:inline>
       (() => {
-        const storageKey = 'ruflo-theme';
+        const storageKey = 'emad-theme';
         const root = document.documentElement;
 
         const getStoredTheme = () => {
@@ -145,7 +145,7 @@ const imageUrl = imagePath.startsWith('http')
         }
 
         try {
-          const storageKey = `ruflo-visit:${path}`;
+          const storageKey = `emad-visit:${path}`;
           if (sessionStorage.getItem(storageKey)) {
             return;
           }
@@ -180,7 +180,7 @@ const imageUrl = imagePath.startsWith('http')
 
       <header class="relative border-b border-slate-200/80 dark:border-slate-800/60">
         <div class="mx-auto flex max-w-6xl flex-col gap-6 px-6 py-8 md:flex-row md:items-center md:justify-between">
-          <a href={baseUrl} class="text-lg font-semibold tracking-tight">Ruflo Dev Blog</a>
+          <a href={baseUrl} class="text-lg font-semibold tracking-tight">Emad Dev Blog</a>
           <nav class="flex flex-wrap items-center gap-4 text-sm text-slate-600 dark:text-slate-300" aria-label="Primary">
             <a class="transition hover:text-sky-700 dark:hover:text-sky-200" href={baseUrl}>Home</a>
             <a class="transition hover:text-sky-700 dark:hover:text-sky-200" href={`${baseUrl}search/`}>Search</a>

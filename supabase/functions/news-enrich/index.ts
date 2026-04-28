@@ -120,7 +120,7 @@ const fetchHtml = async (url) => {
       redirect: "follow",
       signal: controller.signal,
       headers: {
-        "User-Agent": "RufloNewsEnrich/1.0",
+        "User-Agent": "EmadNewsEnrich/1.0",
         Accept: "text/html,application/xhtml+xml",
       },
     });

@@ -2,7 +2,7 @@
 import '../styles/global.css';
 
 const {
-  title = 'Ruflo Developer Blog',
+  title = 'Emad Dev Blog',
   description = 'Notes, experiments, and project write-ups from the build desk.',
   image = '/og-default.svg',
   type = 'website',
@@ -36,7 +36,7 @@ const imageUrl = imagePath.startsWith('http')
     <meta property="og:type" content={type} />
     <meta property="og:url" content={canonicalUrl} />
     <meta property="og:image" content={imageUrl} />
-    <meta property="og:site_name" content="Ruflo Dev Blog" />
+    <meta property="og:site_name" content="Emad Dev Blog" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content={title} />
     <meta name="twitter:description" content={description} />
@@ -44,7 +44,7 @@ const imageUrl = imagePath.startsWith('http')
     <link
       rel="alternate"
       type="application/rss+xml"
-      title="Ruflo Developer Blog"
+      title="Emad Dev Blog"
       href={`${baseUrl}rss.xml`}
     />
     {enableAnalytics && (
@@ -52,7 +52,7 @@ const imageUrl = imagePath.startsWith('http')
     )}
     <script is:inline>
       (() => {
-        const storageKey = 'ruflo-theme';
+        const storageKey = 'emad-theme';
         const root = document.documentElement;
 
         const getStoredTheme = () => {
@@ -120,7 +120,7 @@ const imageUrl = imagePath.startsWith('http')
         }
 
         try {
-          const storageKey = `ruflo-visit:${path}`;
+          const storageKey = `emad-visit:${path}`;
           if (sessionStorage.getItem(storageKey)) {
             return;
           }

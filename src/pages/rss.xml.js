@@ -64,7 +64,7 @@ export async function GET({ site }) {
   const rssUrl = new URL('rss.xml', baseUrl).toString();
   const channelLink = baseUrl.toString();
 
-  const rss = `<?xml version="1.0" encoding="UTF-8"?>\n<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:atom="http://www.w3.org/2005/Atom">\n<channel>\n  <title>Ruflo Developer Blog</title>\n  <link>${channelLink}</link>\n  <description>Personal blog posts and curated links from the build desk.</description>\n  <language>en</language>\n  <lastBuildDate>${lastBuildDate.toUTCString()}</lastBuildDate>\n  <atom:link href="${rssUrl}" rel="self" type="application/rss+xml" />${items}\n</channel>\n</rss>\n`;
+  const rss = `<?xml version="1.0" encoding="UTF-8"?>\n<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:atom="http://www.w3.org/2005/Atom">\n<channel>\n  <title>Emad Dev Blog</title>\n  <link>${channelLink}</link>\n  <description>Personal blog posts and curated links from the build desk.</description>\n  <language>en</language>\n  <lastBuildDate>${lastBuildDate.toUTCString()}</lastBuildDate>\n  <atom:link href="${rssUrl}" rel="self" type="application/rss+xml" />${items}\n</channel>\n</rss>\n`;
 
   return new Response(rss, {
     headers: {

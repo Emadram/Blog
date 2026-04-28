@@ -1,4 +1,4 @@
-# MISSION: RUFLO DEVELOPER BLOG (ASTRO + TAILWIND)
+# MISSION: EMAD DEV BLOG (ASTRO + TAILWIND)
 Build a high-performance developer blog that features a "Projects" section for linking to GitHub repositories.
 
 # MVP MILESTONES (INCREMENTAL)
