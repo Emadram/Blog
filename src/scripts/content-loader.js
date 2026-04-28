@@ -543,6 +543,74 @@ const getSupabaseErrorMessage = (resource, error) => {
   return `${label} Supabase request failed.`;
 };
 
+const normalizeBaseUrl = (value) => {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) {
+    return '';
+  }
+  return trimmed.replace(/\/+$/, '');
+};
+
+const getJitsiBaseUrl = () => normalizeBaseUrl(JITSI_BASE_URL) || 'https://meet.jit.si';
+
+const getJitsiLabel = (baseUrl) => {
+  if (!baseUrl) {
+    return '';
+  }
+  try {
+    return new URL(baseUrl).hostname || baseUrl;
+  } catch (error) {
+    return baseUrl;
+  }
+};
+
+const isDefaultJitsi = (baseUrl) => baseUrl === 'https://meet.jit.si';
+
+const createTalkStatusManager = (section) => {
+  const panel = section?.querySelector('[data-talk-status]');
+  const lines = panel?.querySelector('[data-talk-status-lines]');
+  const entries = new Map();
+
+  const styleMap = {
+    ok: 'text-emerald-600 dark:text-emerald-300',
+    warn: 'text-amber-600 dark:text-amber-300',
+    error: 'text-rose-600 dark:text-rose-300',
+  };
+
+  const labelMap = {
+    supabase: 'Data',
+    voice: 'Voice',
+  };
+
+  const render = () => {
+    if (!lines) {
+      return;
+    }
+    lines.innerHTML = '';
+    ['supabase', 'voice'].forEach((key) => {
+      const entry = entries.get(key);
+      if (!entry) {
+        return;
+      }
+      const line = document.createElement('p');
+      const className = styleMap[entry.state] || 'text-slate-600 dark:text-slate-300';
+      line.className = `text-sm ${className}`;
+      line.textContent = `${labelMap[key] || key}: ${entry.message}`;
+      lines.appendChild(line);
+    });
+  };
+
+  const set = (key, state, message) => {
+    if (!lines) {
+      return;
+    }
+    entries.set(key, { state, message });
+    render();
+  };
+
+  return { set };
+};
+
 const renderTags = (container, tags, category) => {
   container.innerHTML = '';
 
@@ -1516,6 +1584,7 @@ export const initTalkPage = async () => {
   const listSection = section.querySelector('[data-talk-list]');
   const filters = Array.from(section.querySelectorAll('[data-talk-filter]'));
   const form = section.querySelector('[data-talk-form]');
+  const statusManager = createTalkStatusManager(section);
 
   if (!listSection) {
     return;
@@ -1523,8 +1592,18 @@ export const initTalkPage = async () => {
 
   if (!hasSupabaseConfig()) {
     setSectionState(listSection, 'error', getSupabaseErrorMessage('topics'));
+    statusManager.set('supabase', 'error', 'Supabase not configured.');
     return;
   }
+
+  statusManager.set('supabase', 'ok', 'Supabase connected.');
+
+  const jitsiBaseUrl = getJitsiBaseUrl();
+  const jitsiLabel = getJitsiLabel(jitsiBaseUrl) || 'Jitsi';
+  const voiceStatus = isDefaultJitsi(jitsiBaseUrl)
+    ? { state: 'warn', message: 'Public Jitsi in use. Set PUBLIC_JITSI_BASE_URL.' }
+    : { state: 'ok', message: `Voice ready (${jitsiLabel}).` };
+  statusManager.set('voice', voiceStatus.state, voiceStatus.message);
 
   const list = listSection.querySelector('[data-list]');
   const template = listSection.querySelector('template');
@@ -1569,6 +1648,7 @@ export const initTalkPage = async () => {
       setSectionState(listSection, 'ready');
     } catch (error) {
       setSectionState(listSection, 'error', getSupabaseErrorMessage('topics', error));
+      statusManager.set('supabase', 'error', 'Supabase request failed.');
     }
   };
 
@@ -1684,6 +1764,14 @@ export const initTalkThreadPage = async () => {
     return;
   }
 
+  const statusManager = createTalkStatusManager(section);
+  const jitsiBaseUrl = getJitsiBaseUrl();
+  const jitsiLabel = getJitsiLabel(jitsiBaseUrl) || 'Jitsi';
+  const voiceServiceStatus = isDefaultJitsi(jitsiBaseUrl)
+    ? { state: 'warn', message: 'Public Jitsi in use. Set PUBLIC_JITSI_BASE_URL.' }
+    : { state: 'ok', message: `Voice ready (${jitsiLabel}).` };
+  statusManager.set('voice', voiceServiceStatus.state, voiceServiceStatus.message);
+
   const params = new URLSearchParams(window.location.search);
   const slug = section.dataset.talkSlug || params.get('slug') || params.get('topic') || '';
   if (!slug) {
@@ -1707,8 +1795,11 @@ export const initTalkThreadPage = async () => {
     if (detailBody) {
       detailBody.textContent = getSupabaseErrorMessage('topics');
     }
+    statusManager.set('supabase', 'error', 'Supabase not configured.');
     return;
   }
+
+  statusManager.set('supabase', 'ok', 'Supabase connected.');
 
   const detailTitle = section.querySelector('[data-talk-detail-title]');
   const detailBody = section.querySelector('[data-talk-detail-body]');
@@ -1876,6 +1967,7 @@ export const initTalkThreadPage = async () => {
     } catch (error) {
       updateVoiceControls({ joined: false, disabled: false });
       setVoiceStatus(error?.message || 'Unable to join voice room.');
+      statusManager.set('voice', 'error', 'Voice service unavailable.');
       return;
     }
 
@@ -1887,7 +1979,8 @@ export const initTalkThreadPage = async () => {
     }
 
     const roomName = `ruflo-${topic.slug}`;
-    voiceFrame.src = `https://meet.jit.si/${encodeURIComponent(
+    const roomUrlBase = getJitsiBaseUrl();
+    voiceFrame.src = `${roomUrlBase}/${encodeURIComponent(
       roomName
     )}#config.prejoinPageEnabled=false&config.disableAudioOutputSelection=true&config.startWithAudioMuted=true&config.startWithVideoMuted=true&config.disableVideo=true&config.disableThirdPartyRequests=true`;
     voiceFrame.classList.remove('hidden');
@@ -1896,6 +1989,7 @@ export const initTalkThreadPage = async () => {
     updateVoiceControls({ joined: true, disabled: false });
     setVoiceCount(result?.activeCount, result?.limit);
     setVoiceStatus('Connected.');
+    statusManager.set('voice', voiceServiceStatus.state, voiceServiceStatus.message);
 
     voiceSession.heartbeatId = setInterval(() => {
       requestVoiceHeartbeat({
@@ -2038,6 +2132,7 @@ export const initTalkThreadPage = async () => {
         detailStatus.textContent = '';
       }
       setVoiceEmbed(null);
+      statusManager.set('supabase', 'error', 'Supabase request failed.');
     } finally {
       section.setAttribute('aria-busy', 'false');
     }
@@ -2087,6 +2182,11 @@ export const initTalkThreadPage = async () => {
   voiceLeave?.addEventListener('click', async () => {
     await leaveVoice();
     setVoiceStatus('Left voice room.');
+  });
+
+  voiceFrame?.addEventListener('error', () => {
+    setVoiceStatus('Voice embed failed to load.');
+    statusManager.set('voice', 'error', 'Voice service unreachable.');
   });
 
   window.addEventListener('beforeunload', () => {
