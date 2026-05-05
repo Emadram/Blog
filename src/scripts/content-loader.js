@@ -1309,6 +1309,17 @@ const fillNewsCard = (root, item) => {
   }
   const dateEl = root.querySelector('[data-date]');
   if (dateEl) {
+    const raw = item.publishedAt;
+    if (raw) {
+      const parsed = new Date(raw);
+      if (!Number.isNaN(parsed.valueOf())) {
+        dateEl.setAttribute('datetime', parsed.toISOString());
+      } else {
+        dateEl.removeAttribute('datetime');
+      }
+    } else {
+      dateEl.removeAttribute('datetime');
+    }
     dateEl.textContent = formatDate(item.publishedAt);
   }
   const summary = root.querySelector('[data-summary]');
@@ -1333,7 +1344,7 @@ const fillNewsCard = (root, item) => {
     meta.innerHTML = '';
     if (item.readMinutes) {
       const span = document.createElement('span');
-      span.textContent = `${item.readMinutes} min`;
+      span.textContent = `${item.readMinutes} min read`;
       meta.appendChild(span);
     }
   }
@@ -1405,7 +1416,7 @@ export const initHome = async () => {
   setSectionState(projectsSection, 'loading');
 
   const [postsResult, newsResult, projectsResult] = await Promise.allSettled([
-    fetchPosts(),
+    fetchPosts({ featuredOnly: true, limit: 3 }),
     fetchNews({ pinnedOnly: true, limit: 3 }),
     fetchProjects(),
   ]);
@@ -1413,7 +1424,7 @@ export const initHome = async () => {
   if (postsResult.status === 'fulfilled') {
     const allPosts = Array.isArray(postsResult.value) ? postsResult.value : [];
     updateLastUpdated(postsUpdated, allPosts, (post) => post.publishedAt);
-    const posts = allPosts.slice(0, 3);
+    const posts = allPosts;
     if (!posts.length) {
       setSectionState(postsSection, 'empty');
     } else {
