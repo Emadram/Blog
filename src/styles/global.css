@@ -47,11 +47,25 @@ a {
 
 @layer components {
   .markdown-gallery {
-    @apply grid gap-4 sm:grid-cols-2 lg:grid-cols-3;
+    @apply grid gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-3;
   }
 
   .markdown-gallery img {
-    @apply w-full rounded-2xl border border-slate-200 bg-white/80 shadow-sm dark:border-slate-800/60 dark:bg-slate-900/40;
+    @apply mx-auto max-h-44 w-auto max-w-full rounded-xl border border-slate-200 bg-white/80 object-contain shadow-sm dark:border-slate-800/60 dark:bg-slate-900/40 sm:max-h-52;
+  }
+
+  /* Inline images inside rendered markdown (blog detail) */
+  .blog-post-content.prose img {
+    max-height: min(42vh, 18rem);
+    width: auto;
+    max-width: 100%;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .blog-post-content.prose .markdown-gallery img {
+    max-height: min(38vh, 14rem);
+    @apply sm:max-h-52;
   }
 }
 
