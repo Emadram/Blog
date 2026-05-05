@@ -610,3 +610,38 @@ $$;
 
 grant execute on function public.toggle_news_vote(uuid, text) to anon, authenticated;
 grant execute on function public.news_vote_snapshot(uuid[], text) to anon, authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Blog post comments
+-- ---------------------------------------------------------------------------
+
+create table if not exists public.post_comments (
+  id uuid primary key default gen_random_uuid(),
+  post_id uuid not null references public.posts (id) on delete cascade,
+  body text not null,
+  author_name text,
+  is_hidden boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists post_comments_post_id_idx on public.post_comments (post_id, created_at desc);
+
+alter table public.topic_audit
+  add column if not exists post_id uuid references public.posts (id) on delete set null;
+alter table public.topic_audit
+  add column if not exists post_comment_id uuid references public.post_comments (id) on delete set null;
+
+alter table public.post_comments enable row level security;
+
+drop policy if exists "Public post comments are readable" on public.post_comments;
+create policy "Public post comments are readable"
+  on public.post_comments
+  for select
+  using (is_hidden = false);
+
+drop policy if exists "Admins can manage post comments" on public.post_comments;
+create policy "Admins can manage post comments"
+  on public.post_comments
+  for all
+  using (public.is_admin())
+  with check (public.is_admin());

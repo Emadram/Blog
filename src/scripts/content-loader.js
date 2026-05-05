@@ -19,6 +19,7 @@ const SEARCH_AI_FUNCTION = 'search-ai';
 const SEARCH_AI_MAX_ITEMS = 5;
 const TALK_TOPIC_FUNCTION = 'topic-submit';
 const TALK_COMMENT_FUNCTION = 'comment-submit';
+const POST_COMMENT_FUNCTION = 'post-comment-submit';
 const TALK_VOICE_JOIN_FUNCTION = 'voice-join';
 const TALK_VOICE_HEARTBEAT_FUNCTION = 'voice-heartbeat';
 const TALK_VOICE_LEAVE_FUNCTION = 'voice-leave';
@@ -135,6 +136,7 @@ const supabaseRpc = async (fn, payload) => {
 };
 
 const mapPost = (row) => ({
+  id: row.id,
   title: row.title,
   slug: row.slug,
   description: row.description || null,
@@ -199,7 +201,7 @@ const fetchPosts = async ({ limit, featuredOnly = false } = {}) => {
 
   const now = new Date().toISOString();
   const params = {
-    select: 'title,slug,description,published_at,tags,content_md,cover_image,cover_image_alt',
+    select: 'id,title,slug,description,published_at,tags,content_md,cover_image,cover_image_alt',
     draft: 'eq.false',
     published_at: `lte.${now}`,
     order: 'published_at.desc',
@@ -228,7 +230,7 @@ const fetchPostBySlug = async (slug) => {
 
   const now = new Date().toISOString();
   const params = {
-    select: 'title,slug,description,published_at,tags,content_md,cover_image,cover_image_alt',
+    select: 'id,title,slug,description,published_at,tags,content_md,cover_image,cover_image_alt',
     draft: 'eq.false',
     published_at: `lte.${now}`,
     slug: `eq.${slug}`,
@@ -1068,6 +1070,63 @@ const requestCommentSubmit = async ({ topicId, body, authorName }) => {
       body,
       author_name: authorName,
     }),
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data?.error || 'Comment submit failed');
+  }
+  return data?.comment || null;
+};
+
+const mapPostComment = (row) => ({
+  id: row.id,
+  postId: row.post_id,
+  body: row.body,
+  authorName: row.author_name || null,
+  createdAt: row.created_at,
+});
+
+const fetchPostComments = async (postId) => {
+  if (!postId || !hasSupabaseConfig()) {
+    return [];
+  }
+
+  const params = {
+    select: 'id,post_id,body,author_name,created_at',
+    post_id: `eq.${postId}`,
+    is_hidden: 'eq.false',
+    order: 'created_at.asc',
+  };
+
+  const rows = await supabaseFetch('post_comments', params);
+  return rows.map(mapPostComment);
+};
+
+const requestPostCommentSubmit = async ({ postId, postSlug, body, authorName }) => {
+  if (!hasSupabaseConfig()) {
+    throw new Error('Missing Supabase configuration');
+  }
+
+  const payload = {
+    body,
+    author_name: authorName,
+  };
+  if (postId) {
+    payload.post_id = postId;
+  }
+  if (postSlug) {
+    payload.post_slug = postSlug;
+  }
+
+  const response = await fetch(`${SUPABASE_URL}/functions/v1/${POST_COMMENT_FUNCTION}`, {
+    method: 'POST',
+    headers: {
+      apikey: SUPABASE_KEY,
+      Authorization: `Bearer ${SUPABASE_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
   });
 
   const data = await response.json().catch(() => ({}));
@@ -2405,6 +2464,107 @@ export const initTalkThreadPage = async () => {
   await renderThread();
 };
 
+const renderBlogCommentRows = (comments, list, template, empty) => {
+  if (!list || !template) {
+    return;
+  }
+
+  list.innerHTML = '';
+  if (!comments.length) {
+    empty?.classList.remove('hidden');
+    return;
+  }
+
+  empty?.classList.add('hidden');
+  comments.forEach((comment) => {
+    const node = template.content.firstElementChild.cloneNode(true);
+    const meta = node.querySelector('[data-comment-meta]');
+    const bodyEl = node.querySelector('[data-comment-body]');
+    if (meta) {
+      meta.textContent = `${comment.authorName || 'Anon'} · ${formatDate(comment.createdAt)}`;
+    }
+    if (bodyEl) {
+      bodyEl.textContent = comment.body;
+    }
+    list.appendChild(node);
+  });
+};
+
+const initBlogCommentsUi = async (detailSection, post) => {
+  const wrap = detailSection.querySelector('[data-blog-comments-published]');
+  if (!wrap || !post?.id) {
+    return;
+  }
+
+  const list = wrap.querySelector('[data-blog-comments-list]');
+  const empty = wrap.querySelector('[data-blog-comments-empty]');
+  const template = wrap.querySelector('[data-blog-comments-template]');
+  const form = wrap.querySelector('[data-blog-comment-form]');
+  const bodyInput = wrap.querySelector('[data-blog-comment-body]');
+  const authorInput = wrap.querySelector('[data-blog-comment-author]');
+  const status = wrap.querySelector('[data-blog-comment-status]');
+  const submit = wrap.querySelector('[data-blog-comment-submit]');
+
+  const load = async () => {
+    try {
+      const comments = await fetchPostComments(post.id);
+      renderBlogCommentRows(comments, list, template, empty);
+    } catch (error) {
+      if (status) {
+        status.textContent = 'Could not load comments.';
+      }
+    }
+  };
+
+  await load();
+
+  form?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!bodyInput) {
+      return;
+    }
+    const body = bodyInput.value.trim();
+    const authorName = authorInput?.value.trim() || '';
+    if (body.length < 3) {
+      if (status) {
+        status.textContent = 'Comment must be at least 3 characters.';
+      }
+      return;
+    }
+    if (submit) {
+      submit.disabled = true;
+    }
+    if (status) {
+      status.textContent = 'Posting...';
+    }
+
+    try {
+      await requestPostCommentSubmit({
+        postId: post.id,
+        postSlug: post.slug,
+        body,
+        authorName,
+      });
+      bodyInput.value = '';
+      if (authorInput) {
+        authorInput.value = '';
+      }
+      if (status) {
+        status.textContent = '';
+      }
+      await load();
+    } catch (error) {
+      if (status) {
+        status.textContent = error?.message || 'Unable to post comment.';
+      }
+    } finally {
+      if (submit) {
+        submit.disabled = false;
+      }
+    }
+  });
+};
+
 export const initBlogPage = async () => {
   const listSection = document.querySelector('[data-blog-list]');
   const detailSection = document.querySelector('[data-blog-detail]');
@@ -2470,6 +2630,18 @@ export const initBlogPage = async () => {
       content.innerHTML = renderMarkdown(marked, post.contentMd || '');
       document.title = `${post.title}${previewToken ? ' (Preview)' : ''} | Emad Dev Blog`;
       await renderRelatedSection(post, detailSection);
+
+      const previewNote = detailSection.querySelector('[data-blog-comments-preview]');
+      const publishedBlock = detailSection.querySelector('[data-blog-comments-published]');
+      if (previewToken) {
+        previewNote?.classList.remove('hidden');
+        publishedBlock?.classList.add('hidden');
+      } else {
+        previewNote?.classList.add('hidden');
+        publishedBlock?.classList.remove('hidden');
+        await initBlogCommentsUi(detailSection, post);
+      }
+
       setSectionState(detailSection, 'ready');
     } catch (error) {
       setSectionState(detailSection, 'error', getSupabaseErrorMessage('post', error));

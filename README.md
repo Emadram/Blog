@@ -48,3 +48,4 @@ Feel free to check [our documentation](https://docs.astro.build) or jump into ou
 - The Search AI Edge Function reads `OPENROUTER_API_KEY` and `SERVICE_ROLE_KEY` from Supabase secrets.
 - Apply `supabase/supabase-schema.sql` before deploying if you have not already created the `search_ai_queries` table.
 - The **news votes** block at the end of that file adds `news_votes` and RPCs `toggle_news_vote` / `news_vote_snapshot`. Run the new section in the Supabase SQL editor after pulling changes so upvotes work in production.
+- The **blog post comments** section adds `post_comments` and extends `topic_audit` with `post_id` / `post_comment_id`. Deploy the **`post-comment-submit`** Edge Function (same Supabase secrets as `comment-submit`) after applying that SQL.

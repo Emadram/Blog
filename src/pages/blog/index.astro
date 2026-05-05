@@ -101,6 +101,61 @@ const baseUrl = import.meta.env.BASE_URL;
             </article>
           </template>
         </div>
+
+        <p class="mt-10 hidden border-t border-slate-200/80 pt-6 text-sm text-slate-600 dark:border-slate-800/60 dark:text-slate-300" data-blog-comments-preview>
+          Comments appear once this post is published.
+        </p>
+
+        <div class="mt-10 border-t border-slate-200/80 pt-6 dark:border-slate-800/60" data-blog-comments-published>
+          <p class="text-xs uppercase tracking-[0.3em] text-slate-500 dark:text-slate-400">Comments</p>
+          <p class="mt-3 hidden text-sm text-slate-600 dark:text-slate-300" data-blog-comments-empty>
+            No comments yet. Be the first to reply.
+          </p>
+          <div class="mt-4 space-y-4" data-blog-comments-list></div>
+          <template data-blog-comments-template>
+            <article class="rounded-2xl border border-slate-200 bg-white/80 p-4 dark:border-slate-800/60 dark:bg-slate-900/40">
+              <p class="text-xs uppercase tracking-[0.3em] text-slate-500 dark:text-slate-400" data-comment-meta></p>
+              <p class="mt-2 whitespace-pre-wrap text-sm text-slate-600 dark:text-slate-300" data-comment-body></p>
+            </article>
+          </template>
+
+          <form class="mt-6 grid gap-3" data-blog-comment-form>
+            <div>
+              <label class="text-xs uppercase tracking-[0.3em] text-slate-500 dark:text-slate-400" for="blog-comment-name">Name (optional)</label>
+              <input
+                id="blog-comment-name"
+                name="author"
+                type="text"
+                maxlength="40"
+                class="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm text-slate-900 shadow-sm focus:border-sky-400 focus:outline-none dark:border-slate-800/60 dark:bg-slate-950/40 dark:text-slate-100"
+                data-blog-comment-author
+              />
+            </div>
+            <div>
+              <label class="text-xs uppercase tracking-[0.3em] text-slate-500 dark:text-slate-400" for="blog-comment-body">Comment</label>
+              <textarea
+                id="blog-comment-body"
+                name="body"
+                rows="4"
+                required
+                minlength="3"
+                maxlength="3000"
+                class="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm focus:border-sky-400 focus:outline-none dark:border-slate-800/60 dark:bg-slate-950/40 dark:text-slate-100"
+                data-blog-comment-body
+              ></textarea>
+            </div>
+            <div class="flex flex-wrap items-center gap-3">
+              <button
+                type="submit"
+                class="rounded-full bg-sky-100 px-5 py-2 text-sm font-semibold text-sky-800 transition hover:bg-sky-200 dark:bg-sky-400/15 dark:text-sky-200 dark:hover:bg-sky-400/25"
+                data-blog-comment-submit
+              >
+                Post comment
+              </button>
+              <p class="text-xs text-slate-500 dark:text-slate-400" data-blog-comment-status role="status"></p>
+            </div>
+          </form>
+        </div>
       </article>
     </div>
   </section>
