@@ -17,6 +17,20 @@ const imagePath = image.startsWith('http') ? image : `${baseUrl}${image.replace(
 const imageUrl = imagePath.startsWith('http')
   ? imagePath
   : new URL(imagePath, Astro.site ?? Astro.url).toString();
+
+const navItems = [
+  { label: 'Home', href: baseUrl },
+  { label: 'Search', href: `${baseUrl}search/` },
+  { label: 'Blog', href: `${baseUrl}blog/` },
+  { label: 'News', href: `${baseUrl}news/` },
+  { label: 'About', href: `${baseUrl}about/` },
+  { label: 'Projects', href: `${baseUrl}projects/` },
+];
+
+const linkClass =
+  'rounded-lg px-2 py-1 transition hover:text-sky-700 dark:hover:text-sky-200 md:inline-flex md:items-center';
+const mobileLinkClass =
+  'block rounded-lg px-3 py-3 text-base transition hover:bg-slate-100 hover:text-sky-700 dark:hover:bg-slate-800/80 dark:hover:text-sky-200';
 ---
 
 <!doctype html>
@@ -76,35 +90,35 @@ const imageUrl = imagePath.startsWith('http')
           return 'light';
         };
 
-        const applyTheme = (theme) => {
-          root.classList.toggle('dark', theme === 'dark');
-          root.dataset.theme = theme;
-          const toggle = document.querySelector('[data-theme-toggle]');
-          if (toggle) {
+        const syncThemeButtons = (theme) => {
+          document.querySelectorAll('[data-theme-toggle]').forEach((toggle) => {
             toggle.setAttribute('aria-pressed', theme === 'dark');
             toggle.setAttribute(
               'aria-label',
               theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'
             );
-          }
+          });
+        };
+
+        const applyTheme = (theme) => {
+          root.classList.toggle('dark', theme === 'dark');
+          root.dataset.theme = theme;
+          syncThemeButtons(theme);
         };
 
         applyTheme(getPreferredTheme());
 
         document.addEventListener('DOMContentLoaded', () => {
-          const toggle = document.querySelector('[data-theme-toggle]');
-          if (!toggle) {
-            return;
-          }
-
-          toggle.addEventListener('click', () => {
-            const next = root.classList.contains('dark') ? 'light' : 'dark';
-            try {
-              localStorage.setItem(storageKey, next);
-            } catch (error) {
-              // Ignore storage errors and still apply the theme.
-            }
-            applyTheme(next);
+          document.querySelectorAll('[data-theme-toggle]').forEach((toggle) => {
+            toggle.addEventListener('click', () => {
+              const next = root.classList.contains('dark') ? 'light' : 'dark';
+              try {
+                localStorage.setItem(storageKey, next);
+              } catch (error) {
+                // Ignore storage errors and still apply the theme.
+              }
+              applyTheme(next);
+            });
           });
         });
 
@@ -171,7 +185,7 @@ const imageUrl = imagePath.startsWith('http')
     </script>
   </head>
   <body class="selection:bg-sky-300/20 selection:text-slate-900 dark:selection:text-sky-100">
-    <div class="relative min-h-screen overflow-hidden bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+    <div class="relative min-h-screen overflow-x-hidden bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
       <div class="pointer-events-none absolute inset-0 -z-10">
         <div class="absolute -top-48 left-1/2 h-[32rem] w-[32rem] -translate-x-1/2 rounded-full bg-sky-400/20 blur-[120px] dark:bg-sky-500/15"></div>
         <div class="absolute bottom-0 right-0 h-[24rem] w-[24rem] translate-x-1/3 translate-y-1/3 rounded-full bg-blue-300/20 blur-[120px] dark:bg-blue-400/10"></div>
@@ -179,19 +193,21 @@ const imageUrl = imagePath.startsWith('http')
       </div>
 
       <header class="relative border-b border-slate-200/80 dark:border-slate-800/60">
-        <div class="mx-auto flex max-w-6xl flex-col gap-6 px-6 py-8 md:flex-row md:items-center md:justify-between">
-          <a href={baseUrl} class="text-lg font-semibold tracking-tight">Emad Dev Blog</a>
-          <nav class="flex flex-wrap items-center gap-4 text-sm text-slate-600 dark:text-slate-300" aria-label="Primary">
-            <a class="transition hover:text-sky-700 dark:hover:text-sky-200" href={baseUrl}>Home</a>
-            <a class="transition hover:text-sky-700 dark:hover:text-sky-200" href={`${baseUrl}search/`}>Search</a>
-            <a class="transition hover:text-sky-700 dark:hover:text-sky-200" href={`${baseUrl}blog/`}>Blog</a>
-            <a class="transition hover:text-sky-700 dark:hover:text-sky-200" href={`${baseUrl}news/`}>News</a>
-            <a class="transition hover:text-sky-700 dark:hover:text-sky-200" href={`${baseUrl}talk/`}>Talk</a>
-            <a class="transition hover:text-sky-700 dark:hover:text-sky-200" href={`${baseUrl}about/`}>About</a>
-            <a class="transition hover:text-sky-700 dark:hover:text-sky-200" href={`${baseUrl}projects/`}>Projects</a>
+        <div class="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-5 sm:px-6 md:py-8">
+          <a href={baseUrl} class="min-w-0 shrink text-lg font-semibold tracking-tight">Emad Dev Blog</a>
+
+          <nav
+            class="hidden flex-wrap items-center gap-3 text-sm text-slate-600 dark:text-slate-300 md:flex"
+            aria-label="Primary"
+          >
+            {navItems.map((item) => (
+              <a class={linkClass} href={item.href}>
+                {item.label}
+              </a>
+            ))}
             <button
               type="button"
-              class="inline-flex items-center gap-2 rounded-full border border-slate-300/70 px-3 py-1 text-slate-700 transition hover:border-sky-400/60 hover:text-sky-700 dark:border-slate-700/60 dark:text-slate-200 dark:hover:text-sky-200"
+              class="inline-flex items-center gap-2 rounded-full border border-slate-300/70 px-3 py-2 text-slate-700 transition hover:border-sky-400/60 hover:text-sky-700 dark:border-slate-700/60 dark:text-slate-200 dark:hover:text-sky-200 min-h-[44px] sm:min-h-0 sm:py-1"
               data-theme-toggle
               aria-pressed="false"
               aria-label="Toggle color mode"
@@ -213,7 +229,7 @@ const imageUrl = imagePath.startsWith('http')
               <span class="text-xs text-slate-500 dark:text-slate-400">Theme</span>
             </button>
             <a
-              class="inline-flex items-center gap-2 rounded-full border border-slate-300/70 px-3 py-1 text-slate-700 transition hover:border-sky-400/60 hover:text-sky-700 dark:border-slate-700/60 dark:text-slate-200 dark:hover:text-sky-200"
+              class="inline-flex min-h-[44px] items-center gap-2 rounded-full border border-slate-300/70 px-3 py-2 text-slate-700 transition hover:border-sky-400/60 hover:text-sky-700 dark:border-slate-700/60 dark:text-slate-200 dark:hover:text-sky-200 sm:min-h-0 sm:py-1"
               href="https://github.com/Emadram"
               target="_blank"
               rel="noopener noreferrer"
@@ -222,19 +238,98 @@ const imageUrl = imagePath.startsWith('http')
               <span class="text-xs text-slate-500 dark:text-slate-400">-></span>
             </a>
           </nav>
+
+          <button
+            type="button"
+            class="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg border border-slate-300/70 text-slate-700 transition hover:border-sky-400/60 hover:text-sky-700 dark:border-slate-700/60 dark:text-slate-200 dark:hover:text-sky-200 md:hidden"
+            aria-label="Open menu"
+            aria-expanded="false"
+            aria-controls="site-nav-drawer"
+            data-nav-toggle
+          >
+            <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+              <path d="M4 7h16M4 12h16M4 17h16" />
+            </svg>
+          </button>
+        </div>
+
+        <div id="site-nav-drawer" class="hidden border-t border-slate-200/80 bg-slate-50/95 backdrop-blur-sm dark:border-slate-800/60 dark:bg-slate-950/95 md:hidden" data-nav-panel>
+          <nav class="flex max-h-[min(70vh,calc(100dvh-5rem))] flex-col gap-0 overflow-y-auto px-4 py-3 pb-6 text-slate-700 dark:text-slate-200" aria-label="Mobile primary">
+            {navItems.map((item) => (
+              <a class={mobileLinkClass} href={item.href}>
+                {item.label}
+              </a>
+            ))}
+            <div class="mt-2 flex flex-wrap items-center gap-3 border-t border-slate-200/80 pt-4 dark:border-slate-800/60">
+              <button
+                type="button"
+                class="inline-flex items-center gap-2 rounded-full border border-slate-300/70 px-4 py-3 text-sm text-slate-700 transition hover:border-sky-400/60 dark:border-slate-700/60 dark:text-slate-200"
+                data-theme-toggle
+                aria-pressed="false"
+                aria-label="Toggle color mode"
+              >
+                <svg class="h-4 w-4 dark:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="4" />
+                  <path d="M12 2v2M12 20v2M4.93 4.93 6.34 6.34M17.66 17.66 19.07 19.07M2 12h2M20 12h2M4.93 19.07 6.34 17.66M17.66 6.34 19.07 4.93" />
+                </svg>
+                <svg class="hidden h-4 w-4 dark:inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79Z" />
+                </svg>
+                Theme
+              </button>
+              <a
+                class="inline-flex items-center gap-2 rounded-full border border-slate-300/70 px-4 py-3 text-sm text-slate-700 transition hover:border-sky-400/60 dark:border-slate-700/60 dark:text-slate-200"
+                href="https://github.com/Emadram"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                GitHub
+              </a>
+            </div>
+          </nav>
         </div>
       </header>
 
-      <main class="relative mx-auto w-full max-w-6xl px-6 pb-16 pt-10">
+      <main class="relative mx-auto w-full max-w-6xl px-4 pb-16 pt-8 sm:px-6 sm:pt-10">
         <slot />
       </main>
 
       <footer class="relative border-t border-slate-200/80 dark:border-slate-800/60">
-        <div class="mx-auto flex max-w-6xl flex-col items-start justify-between gap-3 px-6 py-8 text-sm text-slate-500 dark:text-slate-400 md:flex-row md:items-center">
+        <div class="mx-auto flex max-w-6xl flex-col items-start justify-between gap-3 px-4 py-8 text-sm text-slate-500 dark:text-slate-400 sm:px-6 md:flex-row md:items-center">
           <span>Built with Astro + Tailwind.</span>
           <span class="font-mono text-xs text-slate-500 dark:text-slate-500">Deploying on GitHub Pages.</span>
         </div>
       </footer>
     </div>
+
+    <script is:inline>
+      document.addEventListener('DOMContentLoaded', () => {
+        const toggle = document.querySelector('[data-nav-toggle]');
+        const panel = document.querySelector('[data-nav-panel]');
+        if (!toggle || !panel) {
+          return;
+        }
+
+        const setOpen = (open) => {
+          panel.classList.toggle('hidden', !open);
+          toggle.setAttribute('aria-expanded', String(open));
+          toggle.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+        };
+
+        toggle.addEventListener('click', () => {
+          setOpen(panel.classList.contains('hidden'));
+        });
+
+        panel.querySelectorAll('a').forEach((link) => {
+          link.addEventListener('click', () => setOpen(false));
+        });
+
+        window.matchMedia('(min-width: 768px)').addEventListener('change', (event) => {
+          if (event.matches) {
+            setOpen(false);
+          }
+        });
+      });
+    </script>
   </body>
 </html>

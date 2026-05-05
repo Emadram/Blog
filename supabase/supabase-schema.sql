@@ -521,3 +521,92 @@ create policy "Admins can manage post cover images"
   for all
   using (bucket_id = 'post-covers' and public.is_admin())
   with check (bucket_id = 'post-covers' and public.is_admin());
+
+-- ---------------------------------------------------------------------------
+-- News votes (anonymous toggle; access via RPC only)
+-- ---------------------------------------------------------------------------
+
+create table if not exists public.news_votes (
+  id uuid primary key default gen_random_uuid(),
+  news_id uuid not null references public.news (id) on delete cascade,
+  voter_key text not null,
+  created_at timestamptz not null default now(),
+  unique (news_id, voter_key)
+);
+
+create index if not exists news_votes_news_id_idx on public.news_votes (news_id);
+
+alter table public.news_votes enable row level security;
+
+create or replace function public.toggle_news_vote(p_news_id uuid, p_voter text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  had_vote boolean;
+  new_count bigint;
+  now_voted boolean;
+begin
+  if p_voter is null or length(trim(p_voter)) < 16 then
+    raise exception 'invalid voter';
+  end if;
+
+  if not exists (select 1 from public.news where id = p_news_id) then
+    raise exception 'news not found';
+  end if;
+
+  select exists(
+    select 1 from public.news_votes nv where nv.news_id = p_news_id and nv.voter_key = p_voter
+  )
+  into had_vote;
+
+  if had_vote then
+    delete from public.news_votes where news_id = p_news_id and voter_key = p_voter;
+    now_voted := false;
+  else
+    insert into public.news_votes (news_id, voter_key) values (p_news_id, p_voter);
+    now_voted := true;
+  end if;
+
+  select count(*)::bigint into new_count from public.news_votes where news_id = p_news_id;
+
+  return jsonb_build_object('voted', now_voted, 'count', new_count);
+end;
+$$;
+
+create or replace function public.news_vote_snapshot(p_news_ids uuid[], p_voter text)
+returns jsonb
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select coalesce(
+    jsonb_agg(
+      jsonb_build_object(
+        'news_id', q.id,
+        'vote_count', coalesce(c.cnt, 0),
+        'voted', coalesce(v.has_v, false)
+      )
+    ),
+    '[]'::jsonb
+  )
+  from unnest(coalesce(p_news_ids, array[]::uuid[])) as q(id)
+  left join (
+    select nv.news_id, count(*)::bigint as cnt
+    from public.news_votes nv
+    where nv.news_id = any(coalesce(p_news_ids, array[]::uuid[]))
+    group by nv.news_id
+  ) c on c.news_id = q.id
+  left join (
+    select distinct nv.news_id, true as has_v
+    from public.news_votes nv
+    where nv.news_id = any(coalesce(p_news_ids, array[]::uuid[]))
+      and nv.voter_key = coalesce(nullif(trim(p_voter), ''), '')
+  ) v on v.news_id = q.id;
+$$;
+
+grant execute on function public.toggle_news_vote(uuid, text) to anon, authenticated;
+grant execute on function public.news_vote_snapshot(uuid[], text) to anon, authenticated;

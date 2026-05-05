@@ -146,6 +146,7 @@ const mapPost = (row) => ({
 });
 
 const mapNews = (row) => ({
+  id: row.id,
   title: row.title,
   source: row.source,
   url: row.url,
@@ -258,20 +259,24 @@ const fetchPostPreview = async (token) => {
   return post;
 };
 
-const fetchNews = async ({ limit, featuredOnly = false } = {}) => {
-  const cacheKey = `news:${featuredOnly ? 'featured' : 'all'}:${limit || 'all'}`;
+const fetchNews = async ({ limit, featuredOnly = false, pinnedOnly = false } = {}) => {
+  const cacheKey = `news:${featuredOnly ? 'featured' : pinnedOnly ? 'pinned' : 'all'}:${limit || 'all'}`;
   const cached = readCache(cacheKey);
   if (cached) {
     return cached;
   }
 
   const params = {
-    select: 'title,source,url,summary,published_at,tags,read_minutes,pinned,category',
+    select: 'id,title,source,url,summary,published_at,tags,read_minutes,pinned,category',
     order: 'published_at.desc',
   };
 
   if (featuredOnly) {
     params.featured = 'eq.true';
+  }
+
+  if (pinnedOnly) {
+    params.pinned = 'eq.true';
   }
 
   if (limit) {
@@ -282,6 +287,123 @@ const fetchNews = async ({ limit, featuredOnly = false } = {}) => {
   const news = rows.map(mapNews);
   writeCache(cacheKey, news);
   return news;
+};
+
+const NEWS_VOTER_KEY = 'emad-news-voter';
+
+const getNewsVoterKey = () => {
+  if (typeof window === 'undefined') {
+    return '';
+  }
+  try {
+    let key = localStorage.getItem(NEWS_VOTER_KEY);
+    if (!key || key.length < 16) {
+      key =
+        typeof crypto !== 'undefined' && crypto.randomUUID
+          ? crypto.randomUUID()
+          : `v-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      localStorage.setItem(NEWS_VOTER_KEY, key);
+    }
+    return key;
+  } catch (error) {
+    return `anon-${Date.now()}`;
+  }
+};
+
+const invalidateNewsCaches = () => {
+  for (const key of [...memoryCache.keys()]) {
+    if (key.startsWith('news:')) {
+      memoryCache.delete(key);
+    }
+  }
+  if (!canUseSessionStorage()) {
+    return;
+  }
+  try {
+    for (let i = sessionStorage.length - 1; i >= 0; i -= 1) {
+      const k = sessionStorage.key(i);
+      if (k && k.includes('news:')) {
+        sessionStorage.removeItem(k);
+      }
+    }
+  } catch (error) {
+    // Ignore storage errors.
+  }
+};
+
+const fetchNewsVoteSnapshot = async (ids) => {
+  if (!hasSupabaseConfig() || !ids.length) {
+    return [];
+  }
+
+  const uniqueIds = [...new Set(ids)];
+  const raw = await supabaseRpc('news_vote_snapshot', {
+    p_news_ids: uniqueIds,
+    p_voter: getNewsVoterKey(),
+  });
+
+  const rows = Array.isArray(raw) ? raw : [];
+  return rows.map((row) => ({
+    news_id: row.news_id,
+    vote_count: Number(row.vote_count ?? 0),
+    voted: Boolean(row.voted),
+  }));
+};
+
+const toggleNewsVote = async (newsId) => {
+  const data = await supabaseRpc('toggle_news_vote', {
+    p_news_id: newsId,
+    p_voter: getNewsVoterKey(),
+  });
+  invalidateNewsCaches();
+  const voted = Boolean(data?.voted);
+  const count = Number(data?.count ?? 0);
+  return { voted, count };
+};
+
+const enrichNewsWithVotes = (items, snapshot) => {
+  const map = new Map(snapshot.map((row) => [row.news_id, row]));
+  return items.map((item) => {
+    const row = map.get(item.id);
+    return {
+      ...item,
+      voteCount: row ? row.vote_count : 0,
+      voted: row ? row.voted : false,
+    };
+  });
+};
+
+const attachNewsVoteListeners = (container) => {
+  if (!container) {
+    return;
+  }
+  container.addEventListener('click', async (event) => {
+    const btn = event.target.closest('[data-news-vote]');
+    if (!btn) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    const id = btn.getAttribute('data-news-id');
+    if (!id || !hasSupabaseConfig()) {
+      return;
+    }
+    btn.disabled = true;
+    try {
+      const { voted, count } = await toggleNewsVote(id);
+      const countEl = btn.querySelector('[data-vote-count]');
+      if (countEl) {
+        countEl.textContent = String(count);
+      }
+      btn.setAttribute('aria-pressed', String(voted));
+      btn.classList.toggle('text-sky-600', voted);
+      btn.classList.toggle('dark:text-sky-300', voted);
+    } catch (error) {
+      // Ignore vote errors silently on public site.
+    } finally {
+      btn.disabled = false;
+    }
+  });
 };
 
 const fetchProjects = async ({ limit } = {}) => {
@@ -1112,6 +1234,63 @@ const sortNewsItems = (items, { rotatePinned = false } = {}) => {
   return rotated.concat(regular);
 };
 
+const fillNewsCard = (root, item) => {
+  const link = root.querySelector('[data-news-link]');
+  if (link) {
+    link.href = item.url;
+    link.setAttribute('aria-label', `Open news: ${item.title}`);
+  }
+  const source = root.querySelector('[data-source]');
+  if (source) {
+    source.textContent = item.source;
+  }
+  const titleEl = root.querySelector('[data-title]');
+  if (titleEl) {
+    titleEl.textContent = item.title;
+  }
+  const dateEl = root.querySelector('[data-date]');
+  if (dateEl) {
+    dateEl.textContent = formatDate(item.publishedAt);
+  }
+  const summary = root.querySelector('[data-summary]');
+  if (summary) {
+    if (item.summary) {
+      summary.textContent = item.summary;
+      summary.classList.remove('hidden');
+    } else {
+      summary.classList.add('hidden');
+    }
+  }
+  const pinned = root.querySelector('[data-pinned]');
+  if (pinned) {
+    pinned.classList.toggle('hidden', !item.pinned);
+  }
+  const tags = root.querySelector('[data-tags]');
+  if (tags) {
+    renderTags(tags, item.tags, item.category);
+  }
+  const meta = root.querySelector('[data-meta]');
+  if (meta) {
+    meta.innerHTML = '';
+    if (item.readMinutes) {
+      const span = document.createElement('span');
+      span.textContent = `${item.readMinutes} min`;
+      meta.appendChild(span);
+    }
+  }
+  const voteBtn = root.querySelector('[data-news-vote]');
+  if (voteBtn && item.id) {
+    voteBtn.dataset.newsId = item.id;
+    voteBtn.setAttribute('aria-pressed', String(Boolean(item.voted)));
+    voteBtn.classList.toggle('text-sky-600', Boolean(item.voted));
+    voteBtn.classList.toggle('dark:text-sky-300', Boolean(item.voted));
+    const vc = voteBtn.querySelector('[data-vote-count]');
+    if (vc) {
+      vc.textContent = String(item.voteCount ?? 0);
+    }
+  }
+};
+
 const prefetchRequests = new Map();
 
 const prefetchPostBySlug = (slug) => {
@@ -1168,7 +1347,7 @@ export const initHome = async () => {
 
   const [postsResult, newsResult, projectsResult] = await Promise.allSettled([
     fetchPosts(),
-    fetchNews(),
+    fetchNews({ pinnedOnly: true, limit: 3 }),
     fetchProjects(),
   ]);
 
@@ -1206,9 +1385,18 @@ export const initHome = async () => {
   }
 
   if (newsResult.status === 'fulfilled') {
-    const allNews = Array.isArray(newsResult.value) ? newsResult.value : [];
+    let allNews = Array.isArray(newsResult.value) ? newsResult.value : [];
     updateLastUpdated(newsUpdated, allNews, (item) => item.publishedAt);
-    const newsItems = sortNewsItems(allNews, { rotatePinned: true }).slice(0, 3);
+    allNews = [...allNews].sort(
+      (a, b) => new Date(b.publishedAt).valueOf() - new Date(a.publishedAt).valueOf()
+    );
+    let snapshot = [];
+    try {
+      snapshot = await fetchNewsVoteSnapshot(allNews.map((n) => n.id));
+    } catch (error) {
+      snapshot = [];
+    }
+    const newsItems = enrichNewsWithVotes(allNews, snapshot);
     if (!newsItems.length) {
       setSectionState(newsSection, 'empty');
     } else {
@@ -1217,30 +1405,10 @@ export const initHome = async () => {
       list.innerHTML = '';
       newsItems.forEach((item) => {
         const node = template.content.firstElementChild.cloneNode(true);
-        node.href = item.url;
-        node.setAttribute('aria-label', `Open news: ${item.title}`);
-        node.querySelector('[data-source]').textContent = item.source;
-        node.querySelector('[data-title]').textContent = item.title;
-        node.querySelector('[data-date]').textContent = formatDate(item.publishedAt);
-        const summary = node.querySelector('[data-summary]');
-        if (item.summary) {
-          summary.textContent = item.summary;
-          summary.classList.remove('hidden');
-        } else {
-          summary.classList.add('hidden');
-        }
-        const pinned = node.querySelector('[data-pinned]');
-        pinned.classList.toggle('hidden', !item.pinned);
-        const tags = node.querySelector('[data-tags]');
-        renderTags(tags, item.tags, item.category);
-        const meta = node.querySelector('[data-meta]');
-        if (item.readMinutes) {
-          const span = document.createElement('span');
-          span.textContent = `${item.readMinutes} min`;
-          meta.appendChild(span);
-        }
+        fillNewsCard(node, item);
         list.appendChild(node);
       });
+      attachNewsVoteListeners(newsSection);
       setSectionState(newsSection, 'ready');
     }
   } else {
@@ -1310,7 +1478,14 @@ export const initNewsPage = async () => {
 
   try {
     setSectionState(section, 'loading');
-    const newsItems = sortNewsItems(await fetchNews());
+    const sorted = sortNewsItems(await fetchNews());
+    let snapshot = [];
+    try {
+      snapshot = await fetchNewsVoteSnapshot(sorted.map((n) => n.id));
+    } catch (voteError) {
+      snapshot = [];
+    }
+    const newsItems = enrichNewsWithVotes(sorted, snapshot);
     if (!newsItems.length) {
       setSectionState(section, 'empty');
     } else {
@@ -1319,31 +1494,10 @@ export const initNewsPage = async () => {
       list.innerHTML = '';
       newsItems.forEach((item) => {
         const node = template.content.firstElementChild.cloneNode(true);
-        node.href = item.url;
-        node.setAttribute('aria-label', `Open news: ${item.title}`);
-        node.querySelector('[data-source]').textContent = item.source;
-        node.querySelector('[data-title]').textContent = item.title;
-        node.querySelector('[data-date]').textContent = formatDate(item.publishedAt);
-        const summary = node.querySelector('[data-summary]');
-        if (item.summary) {
-          summary.textContent = item.summary;
-          summary.classList.remove('hidden');
-        } else {
-          summary.classList.add('hidden');
-        }
-        const pinned = node.querySelector('[data-pinned]');
-        pinned.classList.toggle('hidden', !item.pinned);
-        const tags = node.querySelector('[data-tags]');
-        renderTags(tags, item.tags, item.category);
-        const meta = node.querySelector('[data-meta]');
-        meta.innerHTML = '';
-        if (item.readMinutes) {
-          const span = document.createElement('span');
-          span.textContent = `${item.readMinutes} min`;
-          meta.appendChild(span);
-        }
+        fillNewsCard(node, item);
         list.appendChild(node);
       });
+      attachNewsVoteListeners(section);
       setSectionState(section, 'ready');
     }
   } catch (error) {
