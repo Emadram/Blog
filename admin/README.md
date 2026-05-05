@@ -17,4 +17,4 @@ This is a standalone admin app for managing posts, news links, and projects in S
 - Future publish dates with draft unchecked become scheduled posts.
 - The activity log is populated by database triggers on posts, news, and projects.
 - The schedule panel shows upcoming publishes and lets you clean up expired preview links.
-- News import accepts JSON arrays or CSV headers; duplicates are skipped by URL (apply `news_url_idx` from docs/supabase-schema.sql first).
+- News import accepts JSON arrays or CSV headers; duplicates are skipped by URL (apply `news_url_idx` from supabase/supabase-schema.sql first).

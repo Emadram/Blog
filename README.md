@@ -46,4 +46,4 @@ Feel free to check [our documentation](https://docs.astro.build) or jump into ou
 
 - GitHub Pages builds use the `PUBLIC_SUPABASE_URL`, `PUBLIC_SUPABASE_ANON_KEY`, and `PUBLIC_PLAUSIBLE_DOMAIN` secrets in `.github/workflows/deploy.yml`.
 - The Search AI Edge Function reads `OPENROUTER_API_KEY` and `SERVICE_ROLE_KEY` from Supabase secrets.
-- Apply `docs/supabase-schema.sql` before deploying if you have not already created the `search_ai_queries` table.
+- Apply `supabase/supabase-schema.sql` before deploying if you have not already created the `search_ai_queries` table.

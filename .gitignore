@@ -23,3 +23,6 @@ admin/config.js
 
 # jetbrains setting folder
 .idea/
+
+# local-only docs (overview, sprint notes, reviews)
+docs/
