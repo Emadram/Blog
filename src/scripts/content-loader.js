@@ -770,6 +770,21 @@ const normalizeSearchValue = (value) =>
     .replace(/\s+/g, ' ')
     .trim();
 
+const waitForNextPaint = () =>
+  new Promise((resolve) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => resolve());
+    });
+  });
+
+const runWhenIdle = (fn) => {
+  if (typeof requestIdleCallback === 'function') {
+    requestIdleCallback(() => fn(), { timeout: 2000 });
+  } else {
+    setTimeout(fn, 0);
+  }
+};
+
 const buildSearchRecord = ({
   id,
   type,
@@ -817,17 +832,21 @@ const buildSearchRecord = ({
   };
 };
 
-const buildSearchIndex = async () => {
-  const cacheKey = 'search-index';
+const buildSearchIndex = async (overrides = {}) => {
+  const cacheKey = overrides.cacheKey ?? 'search-index';
   const cached = readCache(cacheKey);
   if (cached) {
     return cached;
   }
 
+  const postsOpts = { limit: 3, featuredOnly: true, ...overrides.posts };
+  const newsOpts = { limit: 3, featuredOnly: true, ...overrides.news };
+  const projectsOpts = { limit: 150, ...overrides.projects };
+
   const [postsResult, newsResult, projectsResult] = await Promise.allSettled([
-    fetchPosts({ limit: 3, featuredOnly: true }),
-    fetchNews({ limit: 3, featuredOnly: true }),
-    fetchProjects(),
+    fetchPosts(postsOpts),
+    fetchNews(newsOpts),
+    fetchProjects(projectsOpts),
   ]);
 
   const items = [];
@@ -1418,7 +1437,7 @@ export const initHome = async () => {
   const [postsResult, newsResult, projectsResult] = await Promise.allSettled([
     fetchPosts({ featuredOnly: true, limit: 3 }),
     fetchNews({ pinnedOnly: true, limit: 3 }),
-    fetchProjects(),
+    fetchProjects({ limit: 150 }),
   ]);
 
   if (postsResult.status === 'fulfilled') {
@@ -1644,20 +1663,33 @@ const renderRelatedSection = async (post, detailSection) => {
   const list = relatedSection.querySelector('[data-related-list]');
   const template = relatedSection.querySelector('template');
   const empty = relatedSection.querySelector('[data-related-empty]');
+  const loadingEl = relatedSection.querySelector('[data-related-loading]');
   if (!list || !template || !empty) {
     return;
   }
 
+  loadingEl?.classList.remove('hidden');
+  empty.classList.add('hidden');
+  list.classList.add('hidden');
   list.innerHTML = '';
+
   let indexItems = [];
   try {
-    indexItems = await buildSearchIndex();
+    indexItems = await buildSearchIndex({
+      cacheKey: 'search-index:related',
+      posts: { limit: 50, featuredOnly: false },
+      news: { limit: 12, featuredOnly: true },
+      projects: { limit: 80 },
+    });
   } catch (error) {
+    loadingEl?.classList.add('hidden');
     empty.textContent = 'Related entries are unavailable right now.';
     empty.classList.remove('hidden');
     list.classList.add('hidden');
     return;
   }
+
+  loadingEl?.classList.add('hidden');
 
   const related = getRelatedItems(post, indexItems).slice(0, 4);
 
@@ -2510,6 +2542,7 @@ const initBlogCommentsUi = async (detailSection, post) => {
   const list = wrap.querySelector('[data-blog-comments-list]');
   const empty = wrap.querySelector('[data-blog-comments-empty]');
   const template = wrap.querySelector('[data-blog-comments-template]');
+  const loadingEl = wrap.querySelector('[data-blog-comments-loading]');
   const form = wrap.querySelector('[data-blog-comment-form]');
   const bodyInput = wrap.querySelector('[data-blog-comment-body]');
   const authorInput = wrap.querySelector('[data-blog-comment-author]');
@@ -2524,10 +2557,13 @@ const initBlogCommentsUi = async (detailSection, post) => {
       if (status) {
         status.textContent = 'Could not load comments.';
       }
+    } finally {
+      loadingEl?.classList.add('hidden');
     }
   };
 
-  await load();
+  loadingEl?.classList.remove('hidden');
+  empty?.classList.add('hidden');
 
   form?.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -2574,6 +2610,8 @@ const initBlogCommentsUi = async (detailSection, post) => {
       }
     }
   });
+
+  await load();
 };
 
 export const initBlogPage = async () => {
@@ -2640,7 +2678,6 @@ export const initBlogPage = async () => {
       const marked = await loadMarked();
       content.innerHTML = renderMarkdown(marked, post.contentMd || '');
       document.title = `${post.title}${previewToken ? ' (Preview)' : ''} | Emad Dev Blog`;
-      await renderRelatedSection(post, detailSection);
 
       const previewNote = detailSection.querySelector('[data-blog-comments-preview]');
       const publishedBlock = detailSection.querySelector('[data-blog-comments-published]');
@@ -2650,10 +2687,30 @@ export const initBlogPage = async () => {
       } else {
         previewNote?.classList.add('hidden');
         publishedBlock?.classList.remove('hidden');
-        await initBlogCommentsUi(detailSection, post);
+        publishedBlock?.querySelector('[data-blog-comments-loading]')?.classList.remove('hidden');
+        publishedBlock?.querySelector('[data-blog-comments-empty]')?.classList.add('hidden');
       }
 
+      const relatedRoot = detailSection.querySelector('[data-related]');
+      relatedRoot?.querySelector('[data-related-loading]')?.classList.remove('hidden');
+      relatedRoot?.querySelector('[data-related-empty]')?.classList.add('hidden');
+      relatedRoot?.querySelector('[data-related-list]')?.classList.add('hidden');
+
+      await waitForNextPaint();
       setSectionState(detailSection, 'ready');
+
+      runWhenIdle(() => {
+        void (async () => {
+          try {
+            await renderRelatedSection(post, detailSection);
+            if (!previewToken) {
+              await initBlogCommentsUi(detailSection, post);
+            }
+          } catch (deferredError) {
+            console.error(deferredError);
+          }
+        })();
+      });
     } catch (error) {
       setSectionState(detailSection, 'error', getSupabaseErrorMessage('post', error));
     }
