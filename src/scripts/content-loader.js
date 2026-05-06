@@ -13,8 +13,22 @@ const BASE_URL = import.meta.env.BASE_URL || '/';
 const SUPABASE_URL = import.meta.env.PUBLIC_SUPABASE_URL;
 const SUPABASE_KEY = import.meta.env.PUBLIC_SUPABASE_ANON_KEY;
 
-const CACHE_TTL_MS = 60 * 1000;
+/** Default TTL for aggregate/list caches (localStorage + memory). */
+const CACHE_TTL_MS = 30 * 60 * 1000;
+/** Shorter TTL for single-post responses so edits propagate sooner. */
+const CACHE_TTL_POST_MS = 10 * 60 * 1000;
+/** URL query `?fresh` bypasses all readCache lookups. */
 const CACHE_BUST_PARAM = 'fresh';
+
+const getCacheTtlMs = (key) => {
+  if (typeof key !== 'string') {
+    return CACHE_TTL_MS;
+  }
+  if (key.startsWith('post:') || key.startsWith('post-preview:')) {
+    return CACHE_TTL_POST_MS;
+  }
+  return CACHE_TTL_MS;
+};
 const SEARCH_AI_FUNCTION = 'search-ai';
 const SEARCH_AI_MAX_ITEMS = 5;
 const TALK_TOPIC_FUNCTION = 'topic-submit';
@@ -27,6 +41,8 @@ const TALK_VOICE_HEARTBEAT_MS = 60000;
 const memoryCache = new Map();
 
 const canUseSessionStorage = () => typeof sessionStorage !== 'undefined';
+
+const canUseLocalStorage = () => typeof localStorage !== 'undefined';
 
 const getCacheKey = (key) => `emad-cache:${key}`;
 
@@ -42,9 +58,10 @@ const readCache = (key) => {
   if (shouldBypassCache()) {
     return null;
   }
+  const ttlMs = getCacheTtlMs(key);
   const now = Date.now();
   const entry = memoryCache.get(key);
-  if (entry && now - entry.ts < CACHE_TTL_MS) {
+  if (entry && now - entry.ts < ttlMs) {
     return entry.data;
   }
 
@@ -52,18 +69,18 @@ const readCache = (key) => {
     memoryCache.delete(key);
   }
 
-  if (!canUseSessionStorage()) {
+  if (!canUseLocalStorage()) {
     return null;
   }
 
   try {
-    const raw = sessionStorage.getItem(getCacheKey(key));
+    const raw = localStorage.getItem(getCacheKey(key));
     if (!raw) {
       return null;
     }
     const parsed = JSON.parse(raw);
-    if (!parsed || now - parsed.ts > CACHE_TTL_MS) {
-      sessionStorage.removeItem(getCacheKey(key));
+    if (!parsed || now - parsed.ts > ttlMs) {
+      localStorage.removeItem(getCacheKey(key));
       return null;
     }
     memoryCache.set(key, parsed);
@@ -77,14 +94,14 @@ const writeCache = (key, data) => {
   const entry = { ts: Date.now(), data };
   memoryCache.set(key, entry);
 
-  if (!canUseSessionStorage()) {
+  if (!canUseLocalStorage()) {
     return;
   }
 
   try {
-    sessionStorage.setItem(getCacheKey(key), JSON.stringify(entry));
+    localStorage.setItem(getCacheKey(key), JSON.stringify(entry));
   } catch (error) {
-    // Ignore storage errors.
+    // Ignore storage errors (quota, private mode).
   }
 };
 
@@ -318,14 +335,14 @@ const invalidateNewsCaches = () => {
       memoryCache.delete(key);
     }
   }
-  if (!canUseSessionStorage()) {
+  if (!canUseLocalStorage()) {
     return;
   }
   try {
-    for (let i = sessionStorage.length - 1; i >= 0; i -= 1) {
-      const k = sessionStorage.key(i);
-      if (k && k.includes('news:')) {
-        sessionStorage.removeItem(k);
+    for (let i = localStorage.length - 1; i >= 0; i -= 1) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith('emad-cache:') && k.includes('news:')) {
+        localStorage.removeItem(k);
       }
     }
   } catch (error) {
