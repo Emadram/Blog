@@ -623,6 +623,15 @@ const enhanceMarkdown = (html) => {
     paragraph.remove();
   });
 
+  wrapper.querySelectorAll('img').forEach((image) => {
+    if (!image.getAttribute('loading')) {
+      image.setAttribute('loading', 'lazy');
+    }
+    if (!image.getAttribute('decoding')) {
+      image.setAttribute('decoding', 'async');
+    }
+  });
+
   return wrapper.innerHTML;
 };
 
