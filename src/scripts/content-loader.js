@@ -105,6 +105,32 @@ const writeCache = (key, data) => {
   }
 };
 
+const fetchListWithCache = async ({ cacheKey, fetcher, mapFn }) => {
+  const cached = readCache(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  const rows = await fetcher();
+  const items = mapFn ? rows.map(mapFn) : rows;
+  writeCache(cacheKey, items);
+  return items;
+};
+
+const fetchItemWithCache = async ({ cacheKey, fetcher, mapFn }) => {
+  const cached = readCache(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  const row = await fetcher();
+  const item = row ? (mapFn ? mapFn(row) : row) : null;
+  if (item) {
+    writeCache(cacheKey, item);
+  }
+  return item;
+};
+
 
 const hasSupabaseConfig = () => Boolean(SUPABASE_URL && SUPABASE_KEY);
 
@@ -211,10 +237,6 @@ const mapTopicComment = (row) => ({
 
 const fetchPosts = async ({ limit, featuredOnly = false } = {}) => {
   const cacheKey = `posts:${featuredOnly ? 'featured' : 'all'}:${limit || 'all'}`;
-  const cached = readCache(cacheKey);
-  if (cached) {
-    return cached;
-  }
 
   const now = new Date().toISOString();
   const params = {
@@ -232,18 +254,15 @@ const fetchPosts = async ({ limit, featuredOnly = false } = {}) => {
     params.limit = String(limit);
   }
 
-  const rows = await supabaseFetch('posts', params);
-  const posts = rows.map(mapPost);
-  writeCache(cacheKey, posts);
-  return posts;
+  return fetchListWithCache({
+    cacheKey,
+    fetcher: () => supabaseFetch('posts', params),
+    mapFn: mapPost,
+  });
 };
 
 const fetchPostBySlug = async (slug) => {
   const cacheKey = `post:${slug}`;
-  const cached = readCache(cacheKey);
-  if (cached) {
-    return cached;
-  }
 
   const now = new Date().toISOString();
   const params = {
@@ -254,36 +273,30 @@ const fetchPostBySlug = async (slug) => {
     limit: '1',
   };
 
-  const rows = await supabaseFetch('posts', params);
-  const post = rows.length > 0 ? mapPost(rows[0]) : null;
-  if (post) {
-    writeCache(cacheKey, post);
-  }
-  return post;
+  return fetchItemWithCache({
+    cacheKey,
+    fetcher: async () => {
+      const rows = await supabaseFetch('posts', params);
+      return rows.length > 0 ? rows[0] : null;
+    },
+    mapFn: mapPost,
+  });
 };
 
 const fetchPostPreview = async (token) => {
   const cacheKey = `post-preview:${token}`;
-  const cached = readCache(cacheKey);
-  if (cached) {
-    return cached;
-  }
-
-  const data = await supabaseRpc('get_post_preview', { token });
-  const row = Array.isArray(data) ? data[0] : data;
-  const post = row ? mapPost(row) : null;
-  if (post) {
-    writeCache(cacheKey, post);
-  }
-  return post;
+  return fetchItemWithCache({
+    cacheKey,
+    fetcher: async () => {
+      const data = await supabaseRpc('get_post_preview', { token });
+      return Array.isArray(data) ? data[0] : data;
+    },
+    mapFn: mapPost,
+  });
 };
 
 const fetchNews = async ({ limit, featuredOnly = false, pinnedOnly = false } = {}) => {
   const cacheKey = `news:${featuredOnly ? 'featured' : pinnedOnly ? 'pinned' : 'all'}:${limit || 'all'}`;
-  const cached = readCache(cacheKey);
-  if (cached) {
-    return cached;
-  }
 
   const params = {
     select: 'id,title,source,url,summary,published_at,tags,read_minutes,pinned,category',
@@ -302,10 +315,11 @@ const fetchNews = async ({ limit, featuredOnly = false, pinnedOnly = false } = {
     params.limit = String(limit);
   }
 
-  const rows = await supabaseFetch('news', params);
-  const news = rows.map(mapNews);
-  writeCache(cacheKey, news);
-  return news;
+  return fetchListWithCache({
+    cacheKey,
+    fetcher: () => supabaseFetch('news', params),
+    mapFn: mapNews,
+  });
 };
 
 const NEWS_VOTER_KEY = 'emad-news-voter';
@@ -427,10 +441,6 @@ const attachNewsVoteListeners = (container) => {
 
 const fetchProjects = async ({ limit } = {}) => {
   const cacheKey = limit ? `projects:${limit}` : 'projects:all';
-  const cached = readCache(cacheKey);
-  if (cached) {
-    return cached;
-  }
 
   const params = {
     select: 'title,description,url,tags,stars,language,updated_at',
@@ -441,18 +451,15 @@ const fetchProjects = async ({ limit } = {}) => {
     params.limit = String(limit);
   }
 
-  const rows = await supabaseFetch('projects', params);
-  const projects = rows.map(mapProject);
-  writeCache(cacheKey, projects);
-  return projects;
+  return fetchListWithCache({
+    cacheKey,
+    fetcher: () => supabaseFetch('projects', params),
+    mapFn: mapProject,
+  });
 };
 
 const fetchTopics = async ({ status = 'open', includeUnlisted = false } = {}) => {
   const cacheKey = `topics:${status}:${includeUnlisted ? 'all' : 'listed'}`;
-  const cached = readCache(cacheKey);
-  if (cached) {
-    return cached;
-  }
 
   const params = {
     select:
@@ -468,18 +475,15 @@ const fetchTopics = async ({ status = 'open', includeUnlisted = false } = {}) =>
     params.is_unlisted = 'eq.false';
   }
 
-  const rows = await supabaseFetch('topics', params);
-  const topics = rows.map(mapTopic);
-  writeCache(cacheKey, topics);
-  return topics;
+  return fetchListWithCache({
+    cacheKey,
+    fetcher: () => supabaseFetch('topics', params),
+    mapFn: mapTopic,
+  });
 };
 
 const fetchTopicBySlug = async (slug) => {
   const cacheKey = `topic:${slug}`;
-  const cached = readCache(cacheKey);
-  if (cached) {
-    return cached;
-  }
 
   const params = {
     select:
@@ -488,20 +492,18 @@ const fetchTopicBySlug = async (slug) => {
     limit: '1',
   };
 
-  const rows = await supabaseFetch('topics', params);
-  const topic = rows.length > 0 ? mapTopic(rows[0]) : null;
-  if (topic) {
-    writeCache(cacheKey, topic);
-  }
-  return topic;
+  return fetchItemWithCache({
+    cacheKey,
+    fetcher: async () => {
+      const rows = await supabaseFetch('topics', params);
+      return rows.length > 0 ? rows[0] : null;
+    },
+    mapFn: mapTopic,
+  });
 };
 
 const fetchTopicComments = async (topicId) => {
   const cacheKey = `topic-comments:${topicId}`;
-  const cached = readCache(cacheKey);
-  if (cached) {
-    return cached;
-  }
 
   const params = {
     select: 'id,topic_id,body,author_name,created_at',
@@ -510,10 +512,11 @@ const fetchTopicComments = async (topicId) => {
     order: 'created_at.asc',
   };
 
-  const rows = await supabaseFetch('topic_comments', params);
-  const comments = rows.map(mapTopicComment);
-  writeCache(cacheKey, comments);
-  return comments;
+  return fetchListWithCache({
+    cacheKey,
+    fetcher: () => supabaseFetch('topic_comments', params),
+    mapFn: mapTopicComment,
+  });
 };
 
 const formatDate = (value) => {
