@@ -63,7 +63,11 @@ a {
   }
 
   .pb-safe-main {
-    padding-bottom: calc(4rem + env(safe-area-inset-bottom, 0px));
+    padding-bottom: calc(6.5rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  .pb-safe-bottom {
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
   }
 
   .py-safe-footer {
@@ -75,6 +79,12 @@ a {
     .sm\:px-safe-sm {
       padding-left: max(1.5rem, env(safe-area-inset-left, 0px));
       padding-right: max(1.5rem, env(safe-area-inset-right, 0px));
+    }
+  }
+
+  @media (min-width: 768px) {
+    .pb-safe-main {
+      padding-bottom: calc(4rem + env(safe-area-inset-bottom, 0px));
     }
   }
 }

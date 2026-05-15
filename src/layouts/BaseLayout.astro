@@ -53,6 +53,21 @@ const navItems = rawNavItems.map((item) => {
   };
 });
 
+const rawBottomNavItems = [
+  { label: 'Home', href: baseUrl, icon: 'home' },
+  { label: 'Blog', href: `${baseUrl}blog/`, icon: 'blog' },
+  { label: 'News', href: `${baseUrl}news/`, icon: 'news' },
+  { label: 'Search', href: `${baseUrl}search/`, icon: 'search' },
+];
+
+const bottomNavItems = rawBottomNavItems.map((item) => {
+  const path = normalizePath(getNavPath(item.href));
+  return {
+    ...item,
+    isActive: currentPath === path,
+  };
+});
+
 const linkClass =
   'rounded-lg px-2 py-1 transition hover:text-sky-700 dark:hover:text-sky-200 md:inline-flex md:items-center';
 const mobileLinkClass =
@@ -63,8 +78,7 @@ const mobileLinkClass =
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <link rel="icon" type="image/svg+xml" href={`${baseUrl}favicon.svg`} />
-    <link rel="icon" href={`${baseUrl}favicon.ico`} />
+    <link rel="icon" href={`${baseUrl}favicon_blog/favicon.ico`} />
     <link rel="icon" type="image/png" sizes="32x32" href={`${baseUrl}favicon_blog/favicon-32x32.png`} />
     <link rel="icon" type="image/png" sizes="16x16" href={`${baseUrl}favicon_blog/favicon-16x16.png`} />
     <link rel="apple-touch-icon" sizes="180x180" href={`${baseUrl}favicon_blog/apple-touch-icon.png`} />
@@ -302,62 +316,6 @@ const mobileLinkClass =
             </a>
           </nav>
 
-          <button
-            type="button"
-            class="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg border border-slate-300/70 text-slate-700 transition hover:border-sky-400/60 hover:text-sky-700 dark:border-slate-700/60 dark:text-slate-200 dark:hover:text-sky-200 md:hidden"
-            aria-label="Open menu"
-            aria-expanded="false"
-            aria-controls="site-nav-drawer"
-            data-nav-toggle
-          >
-            <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
-              <path d="M4 7h16M4 12h16M4 17h16" />
-            </svg>
-          </button>
-        </div>
-
-        <div id="site-nav-drawer" class="hidden border-t border-slate-200/80 bg-slate-50 dark:border-slate-800/60 dark:bg-slate-950 md:hidden" data-nav-panel>
-          <nav class="flex max-h-[min(70vh,calc(100dvh-5rem))] flex-col gap-0 overflow-y-auto px-safe py-3 pb-6 text-slate-700 dark:text-slate-200" aria-label="Mobile primary">
-            {navItems.map((item) => (
-              <a
-                class:list={[
-                  mobileLinkClass,
-                  item.isActive &&
-                    'bg-slate-100 text-sky-700 dark:bg-slate-800/80 dark:text-sky-200',
-                ]}
-                href={item.href}
-                aria-current={item.isActive ? 'page' : undefined}
-              >
-                {item.label}
-              </a>
-            ))}
-            <div class="mt-2 flex flex-wrap items-center gap-3 border-t border-slate-200/80 pt-4 dark:border-slate-800/60">
-              <button
-                type="button"
-                class="inline-flex items-center gap-2 rounded-full border border-slate-300/70 px-4 py-3 text-sm text-slate-700 transition hover:border-sky-400/60 dark:border-slate-700/60 dark:text-slate-200"
-                data-theme-toggle
-                aria-pressed="false"
-                aria-label="Toggle color mode"
-              >
-                <svg class="h-4 w-4 dark:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <circle cx="12" cy="12" r="4" />
-                  <path d="M12 2v2M12 20v2M4.93 4.93 6.34 6.34M17.66 17.66 19.07 19.07M2 12h2M20 12h2M4.93 19.07 6.34 17.66M17.66 6.34 19.07 4.93" />
-                </svg>
-                <svg class="hidden h-4 w-4 dark:inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <path d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79Z" />
-                </svg>
-                Theme
-              </button>
-              <a
-                class="inline-flex items-center gap-2 rounded-full border border-slate-300/70 px-4 py-3 text-sm text-slate-700 transition hover:border-sky-400/60 dark:border-slate-700/60 dark:text-slate-200"
-                href="https://github.com/Emadram"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                GitHub
-              </a>
-            </div>
-          </nav>
         </div>
       </header>
 
@@ -374,6 +332,55 @@ const mobileLinkClass =
           <span class="font-mono text-xs text-slate-500 dark:text-slate-500">Deploying on GitHub Pages.</span>
         </div>
       </footer>
+
+      <nav
+        class="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200/80 bg-white/95 backdrop-blur dark:border-slate-800/60 dark:bg-slate-950/90 md:hidden"
+        aria-label="Primary"
+      >
+        <div class="mx-auto flex max-w-6xl items-center justify-around px-safe pt-2 pb-safe-bottom">
+          {bottomNavItems.map((item) => (
+            <a
+              class:list={[
+                'flex min-w-[4rem] flex-1 flex-col items-center gap-1 rounded-xl px-2 py-2 text-[0.7rem] font-semibold text-slate-500 transition',
+                'hover:text-sky-700 dark:text-slate-400 dark:hover:text-sky-200',
+                item.isActive && 'text-sky-700 dark:text-sky-200',
+              ]}
+              href={item.href}
+              aria-current={item.isActive ? 'page' : undefined}
+            >
+              <span class="flex h-5 w-5 items-center justify-center">
+                {item.icon === 'home' && (
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M3 10.5 12 3l9 7.5" />
+                    <path d="M5 9.5V21h14V9.5" />
+                  </svg>
+                )}
+                {item.icon === 'blog' && (
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M6 4h9a4 4 0 0 1 4 4v12H8a2 2 0 0 1-2-2V4Z" />
+                    <path d="M6 16h13" />
+                    <path d="M6 12h13" />
+                  </svg>
+                )}
+                {item.icon === 'news' && (
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M4 5h16v14H4z" />
+                    <path d="M8 9h8" />
+                    <path d="M8 13h6" />
+                  </svg>
+                )}
+                {item.icon === 'search' && (
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <circle cx="11" cy="11" r="7" />
+                    <path d="m20 20-3.5-3.5" />
+                  </svg>
+                )}
+              </span>
+              <span>{item.label}</span>
+            </a>
+          ))}
+        </div>
+      </nav>
     </div>
 
     <div
@@ -397,35 +404,6 @@ const mobileLinkClass =
       </div>
     </div>
 
-    <script is:inline>
-      document.addEventListener('DOMContentLoaded', () => {
-        const toggle = document.querySelector('[data-nav-toggle]');
-        const panel = document.querySelector('[data-nav-panel]');
-        if (!toggle || !panel) {
-          return;
-        }
-
-        const setOpen = (open) => {
-          panel.classList.toggle('hidden', !open);
-          toggle.setAttribute('aria-expanded', String(open));
-          toggle.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
-        };
-
-        toggle.addEventListener('click', () => {
-          setOpen(panel.classList.contains('hidden'));
-        });
-
-        panel.querySelectorAll('a').forEach((link) => {
-          link.addEventListener('click', () => setOpen(false));
-        });
-
-        window.matchMedia('(min-width: 768px)').addEventListener('change', (event) => {
-          if (event.matches) {
-            setOpen(false);
-          }
-        });
-      });
-    </script>
     <script is:inline define:vars={{ baseUrl, enableServiceWorker }}>
       (() => {
         if (!enableServiceWorker || !('serviceWorker' in navigator)) {
