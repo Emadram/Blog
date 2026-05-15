@@ -1,9 +1,11 @@
-const VERSION = 'v1';
+const VERSION = 'v2';
 const CORE_CACHE = `emad-core-${VERSION}`;
 const RUNTIME_CACHE = `emad-runtime-${VERSION}`;
+const ASSET_CACHE = `emad-assets-${VERSION}`;
 
 const CORE_ASSETS = [
   './',
+  'offline.html',
   'blog/',
   'news/',
   'projects/',
@@ -15,19 +17,21 @@ const CORE_ASSETS = [
   'favicon.svg',
   'favicon.ico',
   'og-default.svg',
-  'manifest.webmanifest'
+  'manifest.webmanifest',
+  'favicon_blog/android-chrome-192x192.png',
+  'favicon_blog/android-chrome-512x512.png',
+  'favicon_blog/apple-touch-icon.png'
 ];
 
 const toAbsoluteUrl = (path) => new URL(path, self.registration.scope).toString();
 const isHtmlRequest = (request) =>
   request.mode === 'navigate' || (request.headers.get('accept') || '').includes('text/html');
+const isAssetRequest = (request) =>
+  ['style', 'script', 'image', 'font'].includes(request.destination);
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches
-      .open(CORE_CACHE)
-      .then((cache) => cache.addAll(CORE_ASSETS.map(toAbsoluteUrl)))
-      .then(() => self.skipWaiting())
+    caches.open(CORE_CACHE).then((cache) => cache.addAll(CORE_ASSETS.map(toAbsoluteUrl)))
   );
 });
 
@@ -38,12 +42,18 @@ self.addEventListener('activate', (event) => {
       .then((keys) =>
         Promise.all(
           keys
-            .filter((key) => ![CORE_CACHE, RUNTIME_CACHE].includes(key))
+            .filter((key) => ![CORE_CACHE, RUNTIME_CACHE, ASSET_CACHE].includes(key))
             .map((key) => caches.delete(key))
         )
       )
       .then(() => self.clients.claim())
   );
+});
+
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener('fetch', (event) => {
@@ -70,8 +80,25 @@ self.addEventListener('fetch', (event) => {
           if (cached) {
             return cached;
           }
-          return caches.match(toAbsoluteUrl('./'));
+          return caches.match(toAbsoluteUrl('offline.html'));
         })
+    );
+    return;
+  }
+
+  if (isAssetRequest(request)) {
+    event.respondWith(
+      caches.match(request).then((cached) => {
+        const fetchPromise = fetch(request)
+          .then((response) => {
+            const copy = response.clone();
+            caches.open(ASSET_CACHE).then((cache) => cache.put(request, copy)).catch(() => {});
+            return response;
+          })
+          .catch(() => cached);
+
+        return cached || fetchPromise;
+      })
     );
     return;
   }
