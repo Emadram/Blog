@@ -19,7 +19,24 @@ const imageUrl = imagePath.startsWith('http')
   ? imagePath
   : new URL(imagePath, Astro.site ?? Astro.url).toString();
 
-const navItems = [
+const normalizePath = (value) => {
+  if (!value) {
+    return '/';
+  }
+  const trimmed = value.replace(/\/+$/, '/') || '/';
+  return trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+};
+
+const getNavPath = (href) => {
+  try {
+    return new URL(href, Astro.site ?? Astro.url).pathname;
+  } catch (error) {
+    return href;
+  }
+};
+
+const currentPath = normalizePath(Astro.url?.pathname ?? '/');
+const rawNavItems = [
   { label: 'Home', href: baseUrl },
   { label: 'Search', href: `${baseUrl}search/` },
   { label: 'Blog', href: `${baseUrl}blog/` },
@@ -27,6 +44,14 @@ const navItems = [
   { label: 'About', href: `${baseUrl}about/` },
   { label: 'Projects', href: `${baseUrl}projects/` },
 ];
+
+const navItems = rawNavItems.map((item) => {
+  const path = normalizePath(getNavPath(item.href));
+  return {
+    ...item,
+    isActive: currentPath === path,
+  };
+});
 
 const linkClass =
   'rounded-lg px-2 py-1 transition hover:text-sky-700 dark:hover:text-sky-200 md:inline-flex md:items-center';
@@ -206,6 +231,12 @@ const mobileLinkClass =
     </script>
   </head>
   <body class="selection:bg-sky-300/20 selection:text-slate-900 dark:selection:text-sky-100">
+    <a
+      href="#main-content"
+      class="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 rounded-lg bg-white px-3 py-2 text-sm text-slate-900 shadow-md ring-2 ring-sky-500 dark:bg-slate-900 dark:text-slate-100"
+    >
+      Skip to content
+    </a>
     <div class="relative min-h-screen overflow-x-hidden bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
       <div class="pointer-events-none absolute inset-0 -z-10">
         <!-- Blobs use blur only from md up; phones rely on the radial wash only (cheaper scrolling). -->
@@ -223,7 +254,14 @@ const mobileLinkClass =
             aria-label="Primary"
           >
             {navItems.map((item) => (
-              <a class={linkClass} href={item.href}>
+              <a
+                class:list={[
+                  linkClass,
+                  item.isActive && 'text-sky-700 dark:text-sky-200 font-semibold',
+                ]}
+                href={item.href}
+                aria-current={item.isActive ? 'page' : undefined}
+              >
                 {item.label}
               </a>
             ))}
@@ -278,7 +316,15 @@ const mobileLinkClass =
         <div id="site-nav-drawer" class="hidden border-t border-slate-200/80 bg-slate-50 dark:border-slate-800/60 dark:bg-slate-950 md:hidden" data-nav-panel>
           <nav class="flex max-h-[min(70vh,calc(100dvh-5rem))] flex-col gap-0 overflow-y-auto px-safe py-3 pb-6 text-slate-700 dark:text-slate-200" aria-label="Mobile primary">
             {navItems.map((item) => (
-              <a class={mobileLinkClass} href={item.href}>
+              <a
+                class:list={[
+                  mobileLinkClass,
+                  item.isActive &&
+                    'bg-slate-100 text-sky-700 dark:bg-slate-800/80 dark:text-sky-200',
+                ]}
+                href={item.href}
+                aria-current={item.isActive ? 'page' : undefined}
+              >
                 {item.label}
               </a>
             ))}
@@ -312,7 +358,10 @@ const mobileLinkClass =
         </div>
       </header>
 
-      <main class="relative mx-auto w-full max-w-6xl px-safe pb-safe-main pt-8 sm:px-safe-sm sm:pt-10">
+      <main
+        id="main-content"
+        class="relative mx-auto w-full max-w-6xl px-safe pb-safe-main pt-8 sm:px-safe-sm sm:pt-10"
+      >
         <slot />
       </main>
 
