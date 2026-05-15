@@ -2658,13 +2658,154 @@ export const initBlogPage = async () => {
     return;
   }
 
-  const params = new URLSearchParams(window.location.search);
-  const slug = params.get('slug');
-  const previewToken = params.get('preview');
+  const defaultTitle = document.title;
+  const blogListUrl = `${BASE_URL}blog/`;
+  const blogPath = new URL(blogListUrl, window.location.origin).pathname;
+  const listScrollKey = 'emad-blog-scroll';
+  let listLoaded = false;
+  let listLoadPromise = null;
 
-  if (slug || previewToken) {
+  const readListScroll = () => {
+    try {
+      const raw = sessionStorage.getItem(listScrollKey);
+      const value = raw ? Number(raw) : 0;
+      return Number.isFinite(value) ? value : 0;
+    } catch (error) {
+      return 0;
+    }
+  };
+
+  const writeListScroll = (value) => {
+    try {
+      sessionStorage.setItem(listScrollKey, String(value));
+    } catch (error) {
+      // Ignore storage errors.
+    }
+  };
+
+  const updateHistory = (state, url, replace = false) => {
+    if (!('history' in window)) {
+      return;
+    }
+    try {
+      if (replace) {
+        window.history.replaceState(state, '', url);
+      } else {
+        window.history.pushState(state, '', url);
+      }
+    } catch (error) {
+      // Ignore history failures.
+    }
+  };
+
+  const getUrlState = () => {
+    const params = new URLSearchParams(window.location.search);
+    return {
+      slug: params.get('slug'),
+      previewToken: params.get('preview'),
+    };
+  };
+
+  const buildDetailUrl = (slugValue, previewValue) => {
+    const params = new URLSearchParams();
+    if (slugValue) {
+      params.set('slug', slugValue);
+    }
+    if (previewValue) {
+      params.set('preview', previewValue);
+    }
+    const query = params.toString();
+    return query ? `${blogListUrl}?${query}` : blogListUrl;
+  };
+
+  const captureListScroll = () => {
+    if (listSection.classList.contains('hidden')) {
+      return;
+    }
+    writeListScroll(window.scrollY || 0);
+  };
+
+  const ensureListLoaded = async () => {
+    if (listLoaded) {
+      return;
+    }
+
+    if (!listLoadPromise) {
+      listLoadPromise = (async () => {
+        try {
+          setSectionState(listSection, 'loading');
+          const posts = await fetchPosts();
+          if (!posts.length) {
+            setSectionState(listSection, 'empty');
+            listLoaded = true;
+            return;
+          }
+          const list = listSection.querySelector('[data-list]');
+          const template = listSection.querySelector('template');
+          list.innerHTML = '';
+          posts.forEach((post) => {
+            const node = template.content.firstElementChild.cloneNode(true);
+            node.querySelector('[data-date]').textContent = formatDate(post.publishedAt);
+            const link = node.querySelector('[data-link]');
+            link.href = buildDetailUrl(post.slug);
+            link.textContent = post.title;
+            link.setAttribute('aria-label', `Read post: ${post.title}`);
+            link.setAttribute('data-blog-link', '');
+            link.setAttribute('data-blog-slug', post.slug);
+            registerPostPrefetch(link, post.slug);
+            const description = node.querySelector('[data-description]');
+            if (post.description) {
+              description.textContent = post.description;
+              description.classList.remove('hidden');
+            } else {
+              description.classList.add('hidden');
+            }
+            const tags = node.querySelector('[data-tags]');
+            renderTags(tags, post.tags);
+            list.appendChild(node);
+          });
+          setSectionState(listSection, 'ready');
+          listLoaded = true;
+        } catch (error) {
+          setSectionState(listSection, 'error', getSupabaseErrorMessage('posts', error));
+          listLoadPromise = null;
+        }
+      })();
+    }
+
+    await listLoadPromise;
+  };
+
+  const showList = async ({ restoreScroll = false, replaceHistory = false, updateUrl = false } = {}) => {
+    detailSection.classList.add('hidden');
+    listSection.classList.remove('hidden');
+    await ensureListLoaded();
+    document.title = defaultTitle;
+
+    if (restoreScroll) {
+      await waitForNextPaint();
+      const scrollY = readListScroll();
+      window.scrollTo({ top: scrollY, left: 0, behavior: 'auto' });
+    }
+
+    if (updateUrl) {
+      updateHistory({ view: 'list', scrollY: readListScroll() }, blogListUrl, replaceHistory);
+    }
+  };
+
+  const showDetail = async ({ slug, previewToken, replaceHistory = false, updateUrl = false } = {}) => {
+    if (!slug && !previewToken) {
+      return;
+    }
+
     listSection.classList.add('hidden');
     detailSection.classList.remove('hidden');
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+
+    if (updateUrl) {
+      updateHistory({ view: 'detail', slug, previewToken }, buildDetailUrl(slug, previewToken), replaceHistory);
+    }
+
     try {
       setSectionState(detailSection, 'loading');
       const post = previewToken ? await fetchPostPreview(previewToken) : await fetchPostBySlug(slug);
@@ -2682,6 +2823,10 @@ export const initBlogPage = async () => {
 
       detailSection.querySelector('[data-detail-title]').textContent = post.title;
       detailSection.querySelector('[data-detail-date]').textContent = formatDate(post.publishedAt);
+      const crumb = detailSection.querySelector('[data-detail-crumb]');
+      if (crumb) {
+        crumb.textContent = post.title;
+      }
       const description = detailSection.querySelector('[data-detail-description]');
       if (post.description) {
         description.textContent = post.description;
@@ -2743,45 +2888,77 @@ export const initBlogPage = async () => {
     } catch (error) {
       setSectionState(detailSection, 'error', getSupabaseErrorMessage('post', error));
     }
+  };
 
-    return;
-  }
-
-  detailSection.classList.add('hidden');
-  listSection.classList.remove('hidden');
-
-  try {
-    setSectionState(listSection, 'loading');
-    const posts = await fetchPosts();
-    if (!posts.length) {
-      setSectionState(listSection, 'empty');
-    } else {
-      const list = listSection.querySelector('[data-list]');
-      const template = listSection.querySelector('template');
-      list.innerHTML = '';
-      posts.forEach((post) => {
-        const node = template.content.firstElementChild.cloneNode(true);
-        node.querySelector('[data-date]').textContent = formatDate(post.publishedAt);
-        const link = node.querySelector('[data-link]');
-        link.href = `${BASE_URL}blog/?slug=${encodeURIComponent(post.slug)}`;
-        link.textContent = post.title;
-        link.setAttribute('aria-label', `Read post: ${post.title}`);
-        registerPostPrefetch(link, post.slug);
-        const description = node.querySelector('[data-description]');
-        if (post.description) {
-          description.textContent = post.description;
-          description.classList.remove('hidden');
-        } else {
-          description.classList.add('hidden');
-        }
-        const tags = node.querySelector('[data-tags]');
-        renderTags(tags, post.tags);
-        list.appendChild(node);
-      });
-      setSectionState(listSection, 'ready');
+  const handleBlogLinkClick = (event) => {
+    const link = event.target.closest('a');
+    if (!link) {
+      return;
     }
-  } catch (error) {
-    setSectionState(listSection, 'error', getSupabaseErrorMessage('posts', error));
+
+    if (link.hasAttribute('data-blog-back')) {
+      event.preventDefault();
+      showList({ restoreScroll: true, updateUrl: true });
+      return;
+    }
+
+    const slugValue = link.getAttribute('data-blog-slug');
+    if (slugValue) {
+      event.preventDefault();
+      captureListScroll();
+      showDetail({ slug: slugValue, updateUrl: true });
+      return;
+    }
+
+    if (!link.href) {
+      return;
+    }
+
+    const url = new URL(link.href, window.location.origin);
+    if (url.pathname === blogPath && url.searchParams.get('slug')) {
+      event.preventDefault();
+      const nextSlug = url.searchParams.get('slug');
+      const nextPreview = url.searchParams.get('preview');
+      showDetail({ slug: nextSlug, previewToken: nextPreview, updateUrl: true });
+    }
+  };
+
+  listSection.addEventListener('click', handleBlogLinkClick);
+  detailSection.addEventListener('click', handleBlogLinkClick);
+
+  let scrollTick = false;
+  window.addEventListener(
+    'scroll',
+    () => {
+      if (scrollTick || listSection.classList.contains('hidden')) {
+        return;
+      }
+      scrollTick = true;
+      requestAnimationFrame(() => {
+        scrollTick = false;
+        if (!listSection.classList.contains('hidden')) {
+          writeListScroll(window.scrollY || 0);
+        }
+      });
+    },
+    { passive: true }
+  );
+
+  window.addEventListener('popstate', () => {
+    const { slug, previewToken } = getUrlState();
+    if (slug || previewToken) {
+      showDetail({ slug, previewToken });
+    } else {
+      showList({ restoreScroll: true });
+    }
+  });
+
+  const { slug, previewToken } = getUrlState();
+  if (slug || previewToken) {
+    await showDetail({ slug, previewToken, updateUrl: false });
+  } else {
+    updateHistory({ view: 'list', scrollY: readListScroll() }, window.location.href, true);
+    await showList({ restoreScroll: false, updateUrl: false });
   }
 };
 
