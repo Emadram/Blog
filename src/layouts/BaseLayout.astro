@@ -65,6 +65,9 @@ const mobileLinkClass =
     <meta charset="utf-8" />
     <link rel="icon" type="image/svg+xml" href={`${baseUrl}favicon.svg`} />
     <link rel="icon" href={`${baseUrl}favicon.ico`} />
+    <link rel="icon" type="image/png" sizes="32x32" href={`${baseUrl}favicon_blog/favicon-32x32.png`} />
+    <link rel="icon" type="image/png" sizes="16x16" href={`${baseUrl}favicon_blog/favicon-16x16.png`} />
+    <link rel="apple-touch-icon" sizes="180x180" href={`${baseUrl}favicon_blog/apple-touch-icon.png`} />
     <link rel="manifest" href={`${baseUrl}manifest.webmanifest`} />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="application-name" content="Emad Dev Blog" />
@@ -373,6 +376,27 @@ const mobileLinkClass =
       </footer>
     </div>
 
+    <div
+      class="fixed bottom-6 right-6 z-50 hidden w-[min(90vw,22rem)] rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-lg backdrop-blur dark:border-slate-800/60 dark:bg-slate-950/90"
+      data-sw-update
+      role="status"
+      aria-live="polite"
+    >
+      <p class="text-sm font-semibold text-slate-900 dark:text-slate-100">Update available</p>
+      <p class="mt-1 text-xs text-slate-600 dark:text-slate-300">
+        A new version is ready. Reload to update.
+      </p>
+      <div class="mt-3 flex items-center gap-2">
+        <button
+          type="button"
+          class="rounded-full bg-sky-100 px-4 py-2 text-xs font-semibold text-sky-800 transition hover:bg-sky-200 dark:bg-sky-400/15 dark:text-sky-200 dark:hover:bg-sky-400/25"
+          data-sw-refresh
+        >
+          Reload now
+        </button>
+      </div>
+    </div>
+
     <script is:inline>
       document.addEventListener('DOMContentLoaded', () => {
         const toggle = document.querySelector('[data-nav-toggle]');
@@ -408,8 +432,51 @@ const mobileLinkClass =
           return;
         }
 
+        const toast = document.querySelector('[data-sw-update]');
+        const refreshButton = toast?.querySelector('[data-sw-refresh]');
+
+        const showToast = () => {
+          if (!toast) {
+            return;
+          }
+          toast.classList.remove('hidden');
+        };
+
+        const promptUpdate = (registration) => {
+          if (!registration?.waiting || !refreshButton) {
+            return;
+          }
+          showToast();
+          refreshButton.onclick = () => {
+            registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+          };
+        };
+
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+          window.location.reload();
+        });
+
         window.addEventListener('load', () => {
-          navigator.serviceWorker.register(`${baseUrl}sw.js`).catch(() => {});
+          navigator.serviceWorker
+            .register(`${baseUrl}sw.js`)
+            .then((registration) => {
+              if (registration.waiting && navigator.serviceWorker.controller) {
+                promptUpdate(registration);
+              }
+
+              registration.addEventListener('updatefound', () => {
+                const worker = registration.installing;
+                if (!worker) {
+                  return;
+                }
+                worker.addEventListener('statechange', () => {
+                  if (worker.state === 'installed' && navigator.serviceWorker.controller) {
+                    promptUpdate(registration);
+                  }
+                });
+              });
+            })
+            .catch(() => {});
         });
       })();
     </script>
