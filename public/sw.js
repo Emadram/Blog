@@ -14,10 +14,11 @@ const CORE_ASSETS = [
   'talk/',
   'rss.xml',
   'sitemap.xml',
-  'favicon.svg',
-  'favicon.ico',
   'og-default.svg',
   'manifest.webmanifest',
+  'favicon_blog/favicon.ico',
+  'favicon_blog/favicon-16x16.png',
+  'favicon_blog/favicon-32x32.png',
   'favicon_blog/android-chrome-192x192.png',
   'favicon_blog/android-chrome-512x512.png',
   'favicon_blog/apple-touch-icon.png'
