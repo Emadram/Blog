@@ -57,9 +57,17 @@ const baseUrl = import.meta.env.BASE_URL;
         Unable to load this post.
       </div>
       <article class="hidden space-y-3 md:space-y-4" data-detail aria-label="Blog post detail">
-        <a class="text-xs uppercase tracking-[0.3em] text-slate-500 transition hover:text-sky-700 dark:text-slate-400 dark:hover:text-sky-200" href={`${baseUrl}blog/`}>
-          Back to blog
-        </a>
+        <nav class="flex flex-wrap items-center gap-2 text-xs uppercase tracking-[0.3em] text-slate-500 dark:text-slate-400" aria-label="Breadcrumb">
+          <a
+            class="transition hover:text-sky-700 dark:hover:text-sky-200"
+            href={`${baseUrl}blog/`}
+            data-blog-back
+          >
+            Blog
+          </a>
+          <span aria-hidden="true">/</span>
+          <span class="text-slate-400 dark:text-slate-500" data-detail-crumb aria-current="page">Post</span>
+        </nav>
         <h1 class="text-3xl font-semibold tracking-tight text-slate-900 dark:text-slate-100 sm:text-4xl" data-detail-title></h1>
         <div class="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400 sm:text-sm">
           <time data-detail-date></time>
@@ -86,8 +94,12 @@ const baseUrl = import.meta.env.BASE_URL;
         <div class="mt-6 border-t border-slate-200/80 pt-5 dark:border-slate-800/60 sm:mt-8 sm:pt-6" data-related>
           <div class="flex flex-wrap items-center justify-between gap-3">
             <p class="text-xs uppercase tracking-[0.3em] text-slate-500 dark:text-slate-400">Related</p>
-            <a class="text-xs uppercase tracking-[0.3em] text-slate-500 transition hover:text-sky-700 dark:text-slate-400 dark:hover:text-sky-200" href={`${baseUrl}search/`}>
-              Browse more
+            <a
+              class="text-xs uppercase tracking-[0.3em] text-slate-500 transition hover:text-sky-700 dark:text-slate-400 dark:hover:text-sky-200"
+              href={`${baseUrl}blog/`}
+              data-blog-back
+            >
+              All posts
             </a>
           </div>
           <p class="mt-3 hidden text-sm text-slate-500 dark:text-slate-400" data-related-loading>
