@@ -49,4 +49,14 @@ Feel free to check [our documentation](https://docs.astro.build) or jump into ou
 - Apply `supabase/supabase-schema.sql` before deploying if you have not already created the `search_ai_queries` table.
 - The **news votes** block at the end of that file adds `news_votes` and RPCs `toggle_news_vote` / `news_vote_snapshot`. Run the new section in the Supabase SQL editor after pulling changes so upvotes work in production.
 - The **blog post comments** section adds `post_comments` and extends `topic_audit` with `post_id` / `post_comment_id`. Deploy the **`post-comment-submit`** Edge Function (same Supabase secrets as `comment-submit`) after applying that SQL.
-- The **news auto-ingest** section adds `news.ingest_source`, `news_feed_sources`, and `news_ingest_log` (seeded with HN + tech RSS feeds). Run that block in the Supabase SQL editor before deploying **`news-sync`** (sprint 026). Edge Function secrets: `SERVICE_ROLE_KEY`, `NEWS_SYNC_SECRET`.
+- The **news auto-ingest** section adds `news.ingest_source`, `news_feed_sources`, and `news_ingest_log` (seeded with HN + tech RSS feeds). Run that block in the Supabase SQL editor before deploying **`news-sync`**. Edge Function secrets: `SERVICE_ROLE_KEY`, `NEWS_SYNC_SECRET`.
+- Deploy **`news-sync`** after the schema block. Manual run (replace project ref and secret):
+
+  ```sh
+  curl -X POST "https://<project-ref>.supabase.co/functions/v1/news-sync" \
+    -H "Content-Type: application/json" \
+    -H "x-sync-secret: <NEWS_SYNC_SECRET>" \
+    -d '{"sources":["hn-top"]}'
+  ```
+
+  RSS feeds are skipped until sprint 027; only Hacker News API sources ingest in sprint 026.
