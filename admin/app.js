@@ -95,6 +95,7 @@ const dom = {
   newsCounts: document.querySelector("[data-news-counts]"),
   newsIngestNote: document.querySelector("[data-news-ingest-note]"),
   newsIngestPill: document.querySelector("[data-news-ingest-pill]"),
+  adminConsolePanel: document.querySelector("[data-admin-console]"),
   adminConsoleList: document.querySelector("[data-admin-console-list]"),
   adminConsoleClear: document.querySelector("[data-admin-console-clear]"),
   projectsSelectAll: document.querySelector('[data-projects-select-all]'),
@@ -238,6 +239,15 @@ const setStatus = (message, tone = "info") => {
   dom.status.dataset.tone = tone;
 };
 
+const refreshAdminConsoleDom = () => {
+  dom.adminConsoleList =
+    dom.adminConsoleList || document.querySelector("[data-admin-console-list]");
+  dom.adminConsoleClear =
+    dom.adminConsoleClear || document.querySelector("[data-admin-console-clear]");
+  dom.adminConsolePanel =
+    dom.adminConsolePanel || document.querySelector("[data-admin-console]");
+};
+
 const pushAdminConsole = ({ action, message, tone = "info", detail = null }) => {
   if (!message) {
     return;
@@ -251,16 +261,23 @@ const pushAdminConsole = ({ action, message, tone = "info", detail = null }) => 
     detail,
   };
   state.adminConsole = [entry, ...(state.adminConsole || [])].slice(0, ADMIN_CONSOLE_MAX);
+  refreshAdminConsoleDom();
   renderAdminConsole();
-  const logPayload = detail ? { detail } : undefined;
-  const logFn =
-    tone === "error" ? console.error : tone === "success" ? console.info : console.log;
-  logFn(`[Emad Admin · ${entry.action}]`, message, logPayload);
+  const prefix = `[Emad Admin · ${entry.action}]`;
+  if (tone === "error") {
+    console.error(prefix, message, detail ?? "");
+  } else if (tone === "success") {
+    console.info(prefix, message, detail ?? "");
+  } else {
+    console.log(prefix, message, detail ?? "");
+  }
 };
 
 const renderAdminConsole = () => {
+  refreshAdminConsoleDom();
   const list = dom.adminConsoleList;
   if (!list) {
+    console.warn("[Emad Admin · console]", "Panel markup missing — rebuild admin or hard-refresh.");
     return;
   }
   const entries = state.adminConsole || [];
@@ -2544,6 +2561,13 @@ const setActiveResource = (resource) => {
     setHidden(section, key !== resource);
   });
   if (resource === "news" && state.isAdmin) {
+    refreshAdminConsoleDom();
+    renderAdminConsole();
+    pushAdminConsole({
+      action: "news-tab",
+      message: "News tab active — filter and button actions log here.",
+      tone: "info",
+    });
     loadFeedSources();
     loadIngestLog();
   }
@@ -3305,7 +3329,87 @@ const handleSession = async (session) => {
   }
 };
 
+const bindNewsPanelEvents = () => {
+  const panel = dom.resources.news;
+  if (!panel || panel.dataset.newsPanelBound === "true") {
+    return;
+  }
+  panel.dataset.newsPanelBound = "true";
+
+  panel.addEventListener("click", (event) => {
+    const filterBtn = event.target.closest("[data-news-filter]");
+    if (filterBtn?.dataset.newsFilter) {
+      event.preventDefault();
+      setNewsFilter(filterBtn.dataset.newsFilter);
+      return;
+    }
+    if (event.target.closest("[data-news-sync-all]")) {
+      triggerNewsSync();
+      return;
+    }
+    if (event.target.closest("[data-news-feeds-refresh]")) {
+      event.preventDefault();
+      replayNews("feeds", "Refreshing feeds and ingest log…", "info");
+      Promise.all([loadFeedSources(), loadIngestLog()]).then(() => {
+        replayNews("feeds", "Feeds and ingest log updated.", "success");
+      });
+      return;
+    }
+    if (event.target.closest("[data-news-bulk-pin]")) {
+      handleNewsBulkPin();
+      return;
+    }
+    if (event.target.closest("[data-news-bulk-unpin]")) {
+      handleNewsBulkUnpin();
+      return;
+    }
+    if (event.target.closest("[data-news-bulk-delete]")) {
+      handleNewsBulkDelete();
+      return;
+    }
+    if (event.target.closest("[data-news-auto-delete]")) {
+      handleDeleteAutoIngested();
+      return;
+    }
+    if (event.target.closest("[data-news-import]")) {
+      const text = dom.newsImportText?.value || "";
+      if (!text.trim()) {
+        replayNews("import", "Paste JSON or CSV before importing.", "error");
+        return;
+      }
+      handleNewsImport(text);
+      return;
+    }
+    if (event.target.closest("[data-admin-console-clear]")) {
+      state.adminConsole = [];
+      renderAdminConsole();
+      console.log("[Emad Admin · console]", "Cleared");
+    }
+  });
+
+  panel.addEventListener("change", (event) => {
+    if (event.target.matches("[data-news-ingest-source-filter]")) {
+      state.newsIngestSourceFilter = dom.newsIngestSourceFilter?.value || "";
+      renderNewsList();
+      updateNewsCounts();
+      const feedLabel = state.newsIngestSourceFilter
+        ? formatIngestFeedLabel(state.newsIngestSourceFilter)
+        : "All feeds";
+      const visible = getFilteredNews().length;
+      replayNews(
+        "filter",
+        `Feed filter: ${feedLabel} · ${visible} shown`,
+        "info",
+        { feed: state.newsIngestSourceFilter || null, visible }
+      );
+    }
+  });
+};
+
 const init = async () => {
+  refreshAdminConsoleDom();
+  bindNewsPanelEvents();
+
   if (!hasConfig) {
     setStatus("Missing Supabase config in admin/config.js.", "error");
     if (dom.loginForm) {
@@ -3374,39 +3478,7 @@ const init = async () => {
   dom.bulkPublish?.addEventListener("click", handleBulkPublish);
   dom.bulkDraft?.addEventListener("click", handleBulkDraft);
   dom.bulkDelete?.addEventListener("click", handleBulkDelete);
-  dom.newsBulkPin?.addEventListener("click", handleNewsBulkPin);
-  dom.newsBulkUnpin?.addEventListener("click", handleNewsBulkUnpin);
-  dom.newsBulkDelete?.addEventListener("click", handleNewsBulkDelete);
-  dom.newsAutoDelete?.addEventListener("click", handleDeleteAutoIngested);
-  dom.newsSyncAll?.addEventListener("click", () => triggerNewsSync());
-  dom.newsFeedsRefresh?.addEventListener("click", async () => {
-    replayNews("feeds", "Refreshing feeds and ingest log…", "info");
-    await Promise.all([loadFeedSources(), loadIngestLog()]);
-    replayNews("feeds", "Feeds and ingest log updated.", "success");
-  });
-  dom.adminConsoleClear?.addEventListener("click", () => {
-    state.adminConsole = [];
-    renderAdminConsole();
-    console.log("[Emad Admin · console]", "Cleared");
-  });
-  dom.newsFilters.forEach((button) => {
-    button.addEventListener("click", () => setNewsFilter(button.dataset.newsFilter));
-  });
-  dom.newsIngestSourceFilter?.addEventListener("change", () => {
-    state.newsIngestSourceFilter = dom.newsIngestSourceFilter.value || "";
-    renderNewsList();
-    updateNewsCounts();
-    const feedLabel = state.newsIngestSourceFilter
-      ? formatIngestFeedLabel(state.newsIngestSourceFilter)
-      : "All feeds";
-    const visible = getFilteredNews().length;
-    replayNews(
-      "filter",
-      `Feed filter: ${feedLabel} · ${visible} shown`,
-      "info",
-      { feed: state.newsIngestSourceFilter || null, visible }
-    );
-  });
+  /* News toolbar: click/change handled via bindNewsPanelEvents delegation */
   dom.newsFeedsPanel?.addEventListener("click", async (event) => {
     const syncButton = event.target.closest("[data-feed-sync]");
     if (!syncButton?.dataset.feedSync) {
@@ -3431,14 +3503,6 @@ const init = async () => {
     true
   );
   dom.projectsBulkDelete?.addEventListener("click", handleProjectsBulkDelete);
-  dom.newsImport?.addEventListener("click", async () => {
-    const text = dom.newsImportText?.value || "";
-    if (!text.trim()) {
-      setNewsImportStatus("Paste JSON/CSV or choose a file.");
-      return;
-    }
-    await handleNewsImport(text);
-  });
   dom.newsImportFile?.addEventListener("change", async (event) => {
     const file = event.target.files?.[0];
     if (!file) {
@@ -3614,6 +3678,12 @@ const init = async () => {
 
   setActiveResource(state.active);
   updatePostPreview();
+  refreshAdminConsoleDom();
+  console.log("[Emad Admin]", "Ready", {
+    consolePanel: Boolean(dom.adminConsolePanel),
+    consoleList: Boolean(dom.adminConsoleList),
+    newsPanelBound: dom.resources.news?.dataset.newsPanelBound === "true",
+  });
 };
 
 init();
