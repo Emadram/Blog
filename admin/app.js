@@ -220,6 +220,18 @@ const formatIngestFeedLabel = (slug) => {
 
 const supabase = hasConfig ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
+/** Clears auth in this browser without requiring a live server session (avoids 403 session_not_found). */
+const signOutAdmin = async () => {
+  if (!supabase) {
+    showAuth();
+    return;
+  }
+  const { error } = await supabase.auth.signOut({ scope: "local" });
+  if (error) {
+    console.warn("[Emad Admin · auth]", "Local sign out:", error.message);
+  }
+};
+
 let newsAutofillInFlight = false;
 let lastNewsAutofillUrl = "";
 let newsAutofillTimer = null;
@@ -3296,8 +3308,7 @@ const handleSession = async (session) => {
   const isAdmin = await checkAdmin();
   if (!isAdmin) {
     setStatus("Access denied. Add your user to admin_users.", "error");
-    await supabase.auth.signOut();
-    showAuth();
+    await signOutAdmin();
     return;
   }
 
@@ -3666,8 +3677,10 @@ const init = async () => {
     }
   });
 
-  dom.signOut?.addEventListener("click", () => {
-    supabase.auth.signOut();
+  dom.signOut?.addEventListener("click", async () => {
+    setStatus("Signing out…", "info");
+    await signOutAdmin();
+    setStatus("Signed out.", "success");
   });
 
   const { data } = await supabase.auth.getSession();
