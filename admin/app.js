@@ -95,6 +95,8 @@ const dom = {
   newsCounts: document.querySelector("[data-news-counts]"),
   newsIngestNote: document.querySelector("[data-news-ingest-note]"),
   newsIngestPill: document.querySelector("[data-news-ingest-pill]"),
+  adminConsoleList: document.querySelector("[data-admin-console-list]"),
+  adminConsoleClear: document.querySelector("[data-admin-console-clear]"),
   projectsSelectAll: document.querySelector('[data-projects-select-all]'),
   projectsSelectedCount: document.querySelector('[data-projects-selected-count]'),
   projectsBulkDelete: document.querySelector('[data-projects-bulk-delete]'),
@@ -170,6 +172,7 @@ const state = {
   ingestLogs: [],
   newsSyncInFlight: false,
   newsSyncActiveSlug: null,
+  adminConsole: [],
 };
 
 const normalizeBaseUrl = (value) => {
@@ -184,6 +187,12 @@ const hasConfig = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 const NEWS_ENRICH_FUNCTION = "news-enrich";
 const NEWS_SYNC_FUNCTION = "news-sync";
 const hasSyncSecret = Boolean(NEWS_SYNC_SECRET && String(NEWS_SYNC_SECRET).trim());
+const ADMIN_CONSOLE_MAX = 14;
+const NEWS_FILTER_LABELS = {
+  all: "All",
+  manual: "Manual",
+  auto: "Auto-ingested",
+};
 
 const INGEST_FEED_LABELS = {
   "hn-top": "HN Top",
@@ -227,6 +236,57 @@ const setStatus = (message, tone = "info") => {
   }
   dom.status.textContent = message || "";
   dom.status.dataset.tone = tone;
+};
+
+const pushAdminConsole = ({ action, message, tone = "info", detail = null }) => {
+  if (!message) {
+    return;
+  }
+  const entry = {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    at: new Date(),
+    action: action || "action",
+    message,
+    tone,
+    detail,
+  };
+  state.adminConsole = [entry, ...(state.adminConsole || [])].slice(0, ADMIN_CONSOLE_MAX);
+  renderAdminConsole();
+  const logPayload = detail ? { detail } : undefined;
+  const logFn =
+    tone === "error" ? console.error : tone === "success" ? console.info : console.log;
+  logFn(`[Emad Admin · ${entry.action}]`, message, logPayload);
+};
+
+const renderAdminConsole = () => {
+  const list = dom.adminConsoleList;
+  if (!list) {
+    return;
+  }
+  const entries = state.adminConsole || [];
+  if (!entries.length) {
+    list.innerHTML = '<li class="admin-console-empty muted">Actions on this tab appear here and in the browser console.</li>';
+    return;
+  }
+  list.innerHTML = entries
+    .map((entry) => {
+      const time = entry.at.toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      });
+      return `<li class="admin-console-line" data-tone="${escapeHtml(entry.tone)}">
+        <span class="admin-console-time">${escapeHtml(time)}</span>
+        <span class="admin-console-action">${escapeHtml(entry.action)}</span>
+        <span class="admin-console-msg">${escapeHtml(entry.message)}</span>
+      </li>`;
+    })
+    .join("");
+};
+
+const replayNews = (action, message, tone = "info", detail = null) => {
+  setStatus(message, tone);
+  pushAdminConsole({ action, message, tone, detail });
 };
 
 const formatDate = (value) => {
@@ -1159,7 +1219,7 @@ const setNewsSyncUiState = (inFlight, activeSlug = null) => {
     dom.newsFeedsRefresh.disabled = state.newsSyncInFlight;
   }
   if (state.newsSyncInFlight) {
-    setNewsSyncStatus("Syncing…");
+    setNewsSyncStatus("Syncing…", "pending");
     renderFeedsTable();
     return;
   }
@@ -1243,9 +1303,28 @@ const getFilteredNews = () => {
   return items;
 };
 
-const setNewsSyncStatus = (message) => {
+const inferSyncStatusTone = (message) => {
+  const text = String(message || "").toLowerCase();
+  if (!text) {
+    return "info";
+  }
+  if (text.includes("syncing")) {
+    return "pending";
+  }
+  if (text.includes("fail") || text.includes("error") || text.includes("missing")) {
+    return "error";
+  }
+  if (text.startsWith("done") || text.includes("finished")) {
+    return "success";
+  }
+  return "info";
+};
+
+const setNewsSyncStatus = (message, tone = null) => {
+  const resolvedTone = tone || inferSyncStatusTone(message);
   if (dom.newsSyncStatus) {
     dom.newsSyncStatus.textContent = message || "";
+    dom.newsSyncStatus.dataset.tone = resolvedTone;
   }
 };
 
@@ -1255,6 +1334,9 @@ const updateNewsFilterUI = () => {
     const isActive = value === state.newsFilter;
     button.setAttribute("aria-pressed", String(isActive));
     button.classList.toggle("active", isActive);
+    button.classList.toggle("filter-chip--manual", value === "manual");
+    button.classList.toggle("filter-chip--auto", value === "auto");
+    button.classList.toggle("filter-chip--all", value === "all");
   });
   const showSourceFilter = state.newsFilter === "auto";
   if (dom.newsIngestSourceFilter) {
@@ -1308,6 +1390,16 @@ const setNewsFilter = (filter) => {
   updateNewsFilterUI();
   renderNewsList();
   updateNewsCounts();
+  const label = NEWS_FILTER_LABELS[state.newsFilter] || state.newsFilter;
+  const manual = state.items.news.filter((item) => !item.ingest_source).length;
+  const synced = state.items.news.filter((item) => item.ingest_source).length;
+  const visible = getFilteredNews().length;
+  replayNews(
+    "filter",
+    `View: ${label} · ${visible} shown (${manual} manual, ${synced} synced)`,
+    "info",
+    { filter: state.newsFilter, visible, manual, synced }
+  );
 };
 
 const renderFeedsTable = () => {
@@ -1446,8 +1538,8 @@ const loadIngestLog = async () => {
 
 const triggerNewsSync = async (sources = null) => {
   if (!hasSyncSecret) {
-    setNewsSyncStatus("Missing NEWS_SYNC_SECRET in config");
-    setStatus("Add NEWS_SYNC_SECRET to admin/config.js.", "error");
+    setNewsSyncStatus("Missing NEWS_SYNC_SECRET in config", "error");
+    replayNews("sync", "Add NEWS_SYNC_SECRET to admin/config.js.", "error");
     return;
   }
 
@@ -1457,8 +1549,9 @@ const triggerNewsSync = async (sources = null) => {
 
   const activeSlug =
     Array.isArray(sources) && sources.length === 1 ? sources[0] : null;
+  const syncLabel = activeSlug ? `Sync ${activeSlug}` : "Sync all enabled feeds";
   setNewsSyncUiState(true, activeSlug);
-  setStatus("Running news sync…", "info");
+  replayNews("sync", `Started: ${syncLabel}`, "info", { sources: sources || "all" });
 
   try {
     const body = Array.isArray(sources) && sources.length ? { sources } : {};
@@ -1476,8 +1569,8 @@ const triggerNewsSync = async (sources = null) => {
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
       const message = payload?.error || `Sync failed (${response.status})`;
-      setNewsSyncStatus(message);
-      setStatus("News sync failed.", "error");
+      setNewsSyncStatus(message, "error");
+      replayNews("sync", `Failed: ${message}`, "error", { sources: sources || "all" });
       return;
     }
 
@@ -1486,8 +1579,13 @@ const triggerNewsSync = async (sources = null) => {
       (sum, row) => sum + (Number(row?.inserted) || 0),
       0
     );
-    setNewsSyncStatus(`Done · +${inserted} new`);
-    setStatus("News sync finished.", "success");
+    setNewsSyncStatus(`Done · +${inserted} new`, "success");
+    replayNews(
+      "sync",
+      `Finished: ${syncLabel} · +${inserted} new`,
+      "success",
+      { inserted, results: payload?.results }
+    );
   } finally {
     setNewsSyncUiState(false, null);
   }
@@ -1502,12 +1600,12 @@ const updateFeedEnabled = async (slug, enabled) => {
     .update({ enabled })
     .eq("slug", slug);
   if (error) {
-    setStatus(`Feed update failed: ${error.message}`, "error");
+    replayNews("feed", `Feed ${slug}: update failed — ${error.message}`, "error");
     await loadFeedSources();
     return;
   }
   await loadFeedSources();
-  setStatus(`${slug} ${enabled ? "enabled" : "disabled"}.`, "success");
+  replayNews("feed", `${slug} ${enabled ? "enabled" : "disabled"}`, "success");
 };
 
 const updateFeedLimit = async (slug, rawLimit) => {
@@ -1520,37 +1618,39 @@ const updateFeedLimit = async (slug, rawLimit) => {
     .update({ fetch_limit: fetchLimit })
     .eq("slug", slug);
   if (error) {
-    setStatus(`Limit update failed: ${error.message}`, "error");
+    replayNews("feed", `Feed ${slug}: limit update failed — ${error.message}`, "error");
     return;
   }
   await loadFeedSources();
+  replayNews("feed", `${slug} fetch limit → ${fetchLimit}`, "success");
 };
 
 const handleDeleteAutoIngested = async () => {
   const slug = dom.newsAutoDeleteSource?.value?.trim();
   if (!slug || !supabase) {
-    setStatus("Choose a feed slug to delete auto-ingested links.", "error");
+    replayNews("delete-auto", "Choose a feed slug to delete auto-ingested links.", "error");
     return;
   }
   const count = state.items.news.filter((item) => item.ingest_source === slug).length;
   if (!count) {
-    setStatus(`No auto-ingested items for ${slug}.`, "info");
+    replayNews("delete-auto", `No auto-ingested items for ${slug}.`, "info");
     return;
   }
   const confirmed = window.confirm(
     `Delete ${count} auto-ingested news link(s) from "${slug}"? Manual entries are kept.`
   );
   if (!confirmed) {
+    replayNews("delete-auto", `Cancelled delete for ${slug}.`, "info");
     return;
   }
-  setStatus("Deleting auto-ingested news…", "info");
+  replayNews("delete-auto", `Deleting ${count} auto-ingested link(s) from ${slug}…`, "info");
   const { error } = await supabase.from("news").delete().eq("ingest_source", slug);
   if (error) {
-    setStatus(`Delete failed: ${error.message}`, "error");
+    replayNews("delete-auto", `Delete failed: ${error.message}`, "error");
     return;
   }
   await loadNews();
-  setStatus(`Deleted auto-ingested items for ${slug}.`, "success");
+  replayNews("delete-auto", `Deleted ${count} auto-ingested item(s) for ${slug}.`, "success");
 };
 
 const renderNewsList = () => {
@@ -2693,12 +2793,13 @@ const handleNewsImport = async (payloadText) => {
     rawItems = parseNewsImportPayload(payloadText);
   } catch (error) {
     setNewsImportStatus("Import failed: invalid JSON or CSV.");
-    setStatus("Import failed.", "error");
+    replayNews("import", "Import failed: invalid JSON or CSV.", "error");
     return;
   }
 
   if (!rawItems.length) {
     setNewsImportStatus("Nothing to import.");
+    replayNews("import", "Nothing to import.", "info");
     return;
   }
 
@@ -2728,17 +2829,18 @@ const handleNewsImport = async (payloadText) => {
 
   if (!payloads.length) {
     setNewsImportStatus("No new items to import.");
+    replayNews("import", "No new items to import (duplicates or invalid rows).", "info");
     return;
   }
 
-  setStatus("Importing news...", "info");
+  replayNews("import", `Importing ${payloads.length} link(s)…`, "info");
   const { data, error } = await supabase
     .from("news")
     .upsert(payloads, { onConflict: "url", ignoreDuplicates: true })
     .select("id");
   if (error) {
     setNewsImportStatus(`Import failed: ${error.message}`);
-    setStatus("Import failed.", "error");
+    replayNews("import", `Import failed: ${error.message}`, "error");
     return;
   }
 
@@ -2749,7 +2851,11 @@ const handleNewsImport = async (payloadText) => {
     skippedDuplicates + serverDuplicates
   } duplicates, ${skippedInvalid} invalid.`;
   setNewsImportStatus(summary);
-  setStatus("News import complete.", "success");
+  replayNews("import", summary, "success", {
+    inserted: insertedCount,
+    skippedDuplicates: skippedDuplicates + serverDuplicates,
+    skippedInvalid,
+  });
 };
 
 const getSelectedNewsIds = () => Array.from(state.selectedNewsIds);
@@ -2757,56 +2863,57 @@ const getSelectedNewsIds = () => Array.from(state.selectedNewsIds);
 const handleNewsBulkPin = async () => {
   const ids = getSelectedNewsIds();
   if (!ids.length || !supabase) {
-    setStatus("Select at least one news link.", "error");
+    replayNews("bulk", "Select at least one news link.", "error");
     return;
   }
-  setStatus("Pinning selected news...", "info");
+  replayNews("bulk", `Pinning ${ids.length} link(s)…`, "info");
   const { error } = await supabase.from("news").update({ pinned: true }).in("id", ids);
   if (error) {
-    setStatus(`Bulk pin failed: ${error.message}`, "error");
+    replayNews("bulk", `Bulk pin failed: ${error.message}`, "error");
     return;
   }
   await loadNews();
   clearNewsSelection();
-  setStatus("Selected news pinned.", "success");
+  replayNews("bulk", `Pinned ${ids.length} link(s).`, "success");
 };
 
 const handleNewsBulkUnpin = async () => {
   const ids = getSelectedNewsIds();
   if (!ids.length || !supabase) {
-    setStatus("Select at least one news link.", "error");
+    replayNews("bulk", "Select at least one news link.", "error");
     return;
   }
-  setStatus("Unpinning selected news...", "info");
+  replayNews("bulk", `Unpinning ${ids.length} link(s)…`, "info");
   const { error } = await supabase.from("news").update({ pinned: false }).in("id", ids);
   if (error) {
-    setStatus(`Bulk unpin failed: ${error.message}`, "error");
+    replayNews("bulk", `Bulk unpin failed: ${error.message}`, "error");
     return;
   }
   await loadNews();
   clearNewsSelection();
-  setStatus("Selected news unpinned.", "success");
+  replayNews("bulk", `Unpinned ${ids.length} link(s).`, "success");
 };
 
 const handleNewsBulkDelete = async () => {
   const ids = getSelectedNewsIds();
   if (!ids.length || !supabase) {
-    setStatus("Select at least one news link.", "error");
+    replayNews("bulk", "Select at least one news link.", "error");
     return;
   }
   const confirmed = window.confirm(`Delete ${ids.length} selected news links?`);
   if (!confirmed) {
+    replayNews("bulk", "Bulk delete cancelled.", "info");
     return;
   }
-  setStatus("Deleting selected news...", "info");
+  replayNews("bulk", `Deleting ${ids.length} link(s)…`, "info");
   const { error } = await supabase.from("news").delete().in("id", ids);
   if (error) {
-    setStatus(`Bulk delete failed: ${error.message}`, "error");
+    replayNews("bulk", `Bulk delete failed: ${error.message}`, "error");
     return;
   }
   await loadNews();
   clearNewsSelection();
-  setStatus("Selected news deleted.", "success");
+  replayNews("bulk", `Deleted ${ids.length} link(s).`, "success");
 };
 
 const getSelectedProjectIds = () => Array.from(state.selectedProjectIds);
@@ -2978,24 +3085,28 @@ const handleNewsSubmit = async (event) => {
       .eq("url", url)
       .maybeSingle();
     if (lookupError) {
-      setStatus(`Lookup failed: ${lookupError.message}`, "error");
+      replayNews("save", `Lookup failed: ${lookupError.message}`, "error");
       return;
     }
     targetId = existing?.id || "";
   }
 
-  setStatus(targetId ? "Updating link..." : "Saving link...", "info");
+  const saveLabel = targetId ? "Updating manual link" : "Saving new manual link";
+  replayNews("save", `${saveLabel}: ${title}`, "info");
   const query = targetId
     ? supabase.from("news").update(payload).eq("id", targetId).select().single()
     : supabase.from("news").insert(payload).select().single();
 
   const { data, error } = await query;
   if (error) {
-    setStatus(`Save failed: ${error.message}`, "error");
+    replayNews("save", `Save failed: ${error.message}`, "error");
     return;
   }
 
-  setStatus("News link saved.", "success");
+  const kind = data?.ingest_source
+    ? `Synced link saved (${formatIngestFeedLabel(data.ingest_source)})`
+    : "Manual link saved";
+  replayNews("save", `${kind}: ${data?.title || title}`, "success", { id: data?.id });
   await loadNews();
   state.selected.news = data;
   fillNewsForm(data);
@@ -3168,6 +3279,7 @@ const handleSession = async (session) => {
 
   state.isAdmin = true;
   showDashboard();
+  renderAdminConsole();
   setStatus("Syncing content...", "info");
   const cleanupResult = await cleanupPreviewTokens();
   await Promise.all([
@@ -3213,7 +3325,10 @@ const init = async () => {
   });
 
   dom.newButtons.posts?.addEventListener("click", resetPostForm);
-  dom.newButtons.news?.addEventListener("click", resetNewsForm);
+  dom.newButtons.news?.addEventListener("click", () => {
+    resetNewsForm();
+    replayNews("form", "New manual link form ready.", "info");
+  });
   dom.newButtons.topics?.addEventListener("click", resetTopicForm);
   dom.newButtons.projects?.addEventListener("click", resetProjectsForm);
 
@@ -3265,9 +3380,14 @@ const init = async () => {
   dom.newsAutoDelete?.addEventListener("click", handleDeleteAutoIngested);
   dom.newsSyncAll?.addEventListener("click", () => triggerNewsSync());
   dom.newsFeedsRefresh?.addEventListener("click", async () => {
-    setStatus("Refreshing feeds…", "info");
+    replayNews("feeds", "Refreshing feeds and ingest log…", "info");
     await Promise.all([loadFeedSources(), loadIngestLog()]);
-    setStatus("Feeds updated.", "success");
+    replayNews("feeds", "Feeds and ingest log updated.", "success");
+  });
+  dom.adminConsoleClear?.addEventListener("click", () => {
+    state.adminConsole = [];
+    renderAdminConsole();
+    console.log("[Emad Admin · console]", "Cleared");
   });
   dom.newsFilters.forEach((button) => {
     button.addEventListener("click", () => setNewsFilter(button.dataset.newsFilter));
@@ -3276,6 +3396,16 @@ const init = async () => {
     state.newsIngestSourceFilter = dom.newsIngestSourceFilter.value || "";
     renderNewsList();
     updateNewsCounts();
+    const feedLabel = state.newsIngestSourceFilter
+      ? formatIngestFeedLabel(state.newsIngestSourceFilter)
+      : "All feeds";
+    const visible = getFilteredNews().length;
+    replayNews(
+      "filter",
+      `Feed filter: ${feedLabel} · ${visible} shown`,
+      "info",
+      { feed: state.newsIngestSourceFilter || null, visible }
+    );
   });
   dom.newsFeedsPanel?.addEventListener("click", async (event) => {
     const syncButton = event.target.closest("[data-feed-sync]");

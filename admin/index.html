@@ -264,10 +264,14 @@
                         <p class="eyebrow">Auto-ingest feeds</p>
                         <p class="muted">Pull top stories via the news-sync Edge Function.</p>
                       </div>
-                      <div class="schedule-actions">
-                        <button class="button ghost" type="button" data-news-sync-all>Sync all enabled</button>
-                        <button class="button ghost" type="button" data-news-feeds-refresh>Refresh</button>
-                        <span class="schedule-status" data-news-sync-status></span>
+                      <div class="schedule-actions feeds-actions">
+                        <button class="button ghost button--compact" type="button" data-news-sync-all>
+                          Sync all enabled
+                        </button>
+                        <button class="button ghost button--compact" type="button" data-news-feeds-refresh>
+                          Refresh
+                        </button>
+                        <span class="schedule-status feed-sync-status" data-news-sync-status role="status"></span>
                       </div>
                     </div>
                     <div class="feeds-table-wrap" data-news-feeds-table></div>
@@ -277,32 +281,92 @@
                     </div>
                   </div>
 
-                  <div class="list-toolbar">
-                    <div class="news-list-filters" role="group" aria-label="News list filters">
-                      <button class="filter-chip" type="button" data-news-filter="all" aria-pressed="true">All</button>
-                      <button class="filter-chip" type="button" data-news-filter="manual" aria-pressed="false">Manual</button>
-                      <button class="filter-chip" type="button" data-news-filter="auto" aria-pressed="false">Auto-ingested</button>
-                      <label class="sr-only" for="news-ingest-source-filter">Auto feed</label>
-                      <select id="news-ingest-source-filter" class="feeds-select" data-news-ingest-source-filter hidden>
-                        <option value="">All feeds</option>
-                      </select>
+                  <div class="list-toolbar news-toolbar">
+                    <div class="queue-summary news-counts" data-news-counts aria-live="polite"></div>
+                    <div class="toolbar-row">
+                      <div class="toolbar-section">
+                        <span class="toolbar-label">View</span>
+                        <div class="filter-row news-list-filters" role="group" aria-label="News list filters">
+                          <button
+                            class="filter-chip filter-chip--all active"
+                            type="button"
+                            data-news-filter="all"
+                            aria-pressed="true"
+                          >
+                            All
+                          </button>
+                          <button
+                            class="filter-chip filter-chip--manual"
+                            type="button"
+                            data-news-filter="manual"
+                            aria-pressed="false"
+                          >
+                            Manual
+                          </button>
+                          <button
+                            class="filter-chip filter-chip--auto"
+                            type="button"
+                            data-news-filter="auto"
+                            aria-pressed="false"
+                          >
+                            Auto-ingested
+                          </button>
+                          <label class="sr-only" for="news-ingest-source-filter">Auto feed</label>
+                          <select
+                            id="news-ingest-source-filter"
+                            class="feeds-select feeds-select--inline"
+                            data-news-ingest-source-filter
+                            hidden
+                          >
+                            <option value="">All feeds</option>
+                          </select>
+                        </div>
+                      </div>
+                      <div class="toolbar-section toolbar-section--bulk">
+                        <span class="toolbar-label">Bulk</span>
+                        <div class="bulk-actions toolbar-actions">
+                          <label class="select-all">
+                            <input type="checkbox" data-news-select-all />
+                            Select all
+                          </label>
+                          <span class="selected-count" data-news-selected-count>Selected 0</span>
+                          <button class="button ghost button--compact" type="button" data-news-bulk-pin>
+                            Pin
+                          </button>
+                          <button class="button ghost button--compact" type="button" data-news-bulk-unpin>
+                            Unpin
+                          </button>
+                          <button class="button ghost button--compact" type="button" data-news-bulk-delete>
+                            Delete
+                          </button>
+                          <label class="sr-only" for="news-auto-delete-source">Delete auto-ingested by feed</label>
+                          <select
+                            id="news-auto-delete-source"
+                            class="feeds-select feeds-select--inline"
+                            data-news-auto-delete-source
+                          >
+                            <option value="">Delete auto by feed…</option>
+                          </select>
+                          <button class="button ghost button--compact" type="button" data-news-auto-delete>
+                            Delete auto
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                    <div class="bulk-actions">
-                      <label class="select-all">
-                        <input type="checkbox" data-news-select-all />
-                        Select all
-                      </label>
-                      <span class="selected-count" data-news-selected-count>Selected 0</span>
-                      <button class="button ghost" type="button" data-news-bulk-pin>Pin</button>
-                      <button class="button ghost" type="button" data-news-bulk-unpin>Unpin</button>
-                      <button class="button ghost" type="button" data-news-bulk-delete>Delete</button>
-                      <label class="sr-only" for="news-auto-delete-source">Delete auto-ingested by feed</label>
-                      <select id="news-auto-delete-source" class="feeds-select" data-news-auto-delete-source>
-                        <option value="">Delete auto by feed…</option>
-                      </select>
-                      <button class="button ghost" type="button" data-news-auto-delete>Delete auto</button>
-                    </div>
-                    <div class="news-counts queue-summary" data-news-counts aria-live="polite"></div>
+                    <aside class="admin-console" data-admin-console>
+                      <div class="admin-console-header">
+                        <span class="toolbar-label">Console</span>
+                        <button
+                          class="button ghost button--compact"
+                          type="button"
+                          data-admin-console-clear
+                          aria-label="Clear console"
+                        >
+                          Clear
+                        </button>
+                      </div>
+                      <ol class="admin-console-list" data-admin-console-list aria-live="polite"></ol>
+                    </aside>
                     <div class="import-panel">
                       <div class="import-header">
                         <p class="eyebrow">Import</p>

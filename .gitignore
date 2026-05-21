@@ -26,3 +26,6 @@ admin/config.js
 
 # local-only docs (overview, sprint notes, reviews)
 docs/
+
+# optional local admin notes (repo root README covers project setup)
+admin/README.md
