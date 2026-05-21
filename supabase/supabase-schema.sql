@@ -62,6 +62,7 @@ alter table public.news
   add column if not exists pinned boolean not null default false,
   add column if not exists featured boolean not null default false,
   add column if not exists category text,
+  add column if not exists ingest_source text,
   add column if not exists created_by uuid references auth.users (id),
   add column if not exists updated_by uuid references auth.users (id),
   add column if not exists updated_at timestamptz not null default now();
@@ -69,6 +70,8 @@ alter table public.news
 create index if not exists news_published_at_idx on public.news (published_at desc);
 create index if not exists news_featured_idx on public.news (featured, published_at desc);
 create unique index if not exists news_url_idx on public.news (url);
+create index if not exists news_ingest_source_idx on public.news (ingest_source)
+  where ingest_source is not null;
 
 -- Projects
 create table if not exists public.projects (
@@ -645,3 +648,165 @@ create policy "Admins can manage post comments"
   for all
   using (public.is_admin())
   with check (public.is_admin());
+
+-- ---------------------------------------------------------------------------
+-- News auto-ingest (feed sources + run log; rows tagged via news.ingest_source)
+-- ---------------------------------------------------------------------------
+
+create table if not exists public.news_feed_sources (
+  id uuid primary key default gen_random_uuid(),
+  slug text not null unique,
+  name text not null,
+  kind text not null check (kind in ('api', 'rss')),
+  endpoint text not null,
+  enabled boolean not null default true,
+  fetch_limit integer not null default 20 check (fetch_limit > 0 and fetch_limit <= 100),
+  default_source text not null,
+  default_category text not null default 'tech',
+  default_tags text[] not null default '{}',
+  last_run_at timestamptz,
+  last_status text,
+  last_error text,
+  last_inserted integer not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists news_feed_sources_enabled_idx on public.news_feed_sources (enabled, slug);
+
+create table if not exists public.news_ingest_log (
+  id uuid primary key default gen_random_uuid(),
+  source_slug text not null,
+  run_at timestamptz not null default now(),
+  fetched integer not null default 0,
+  inserted integer not null default 0,
+  skipped integer not null default 0,
+  errors jsonb not null default '[]'::jsonb
+);
+
+create index if not exists news_ingest_log_run_at_idx on public.news_ingest_log (run_at desc);
+create index if not exists news_ingest_log_source_slug_idx on public.news_ingest_log (source_slug, run_at desc);
+
+alter table public.news_feed_sources enable row level security;
+alter table public.news_ingest_log enable row level security;
+
+drop trigger if exists set_news_feed_sources_updated_at on public.news_feed_sources;
+create trigger set_news_feed_sources_updated_at
+  before insert or update on public.news_feed_sources
+  for each row execute function public.set_updated_at();
+
+drop policy if exists "Admins can read news feed sources" on public.news_feed_sources;
+create policy "Admins can read news feed sources"
+  on public.news_feed_sources
+  for select
+  using (public.is_admin());
+
+drop policy if exists "Admins can update news feed sources" on public.news_feed_sources;
+create policy "Admins can update news feed sources"
+  on public.news_feed_sources
+  for update
+  using (public.is_admin())
+  with check (public.is_admin());
+
+drop policy if exists "Admins can read news ingest log" on public.news_ingest_log;
+create policy "Admins can read news ingest log"
+  on public.news_ingest_log
+  for select
+  using (public.is_admin());
+
+insert into public.news_feed_sources (
+  slug,
+  name,
+  kind,
+  endpoint,
+  enabled,
+  fetch_limit,
+  default_source,
+  default_category,
+  default_tags
+)
+values
+  (
+    'hn-top',
+    'Hacker News — Top',
+    'api',
+    'https://hacker-news.firebaseio.com/v0/topstories.json',
+    true,
+    30,
+    'Hacker News',
+    'tech',
+    array['auto-ingest', 'hn', 'top']
+  ),
+  (
+    'hn-new',
+    'Hacker News — New',
+    'api',
+    'https://hacker-news.firebaseio.com/v0/newstories.json',
+    false,
+    20,
+    'Hacker News',
+    'tech',
+    array['auto-ingest', 'hn', 'new']
+  ),
+  (
+    'lobsters',
+    'Lobsters',
+    'rss',
+    'https://lobste.rs/rss',
+    true,
+    20,
+    'Lobsters',
+    'tech',
+    array['auto-ingest', 'lobsters']
+  ),
+  (
+    'ars-technica',
+    'Ars Technica',
+    'rss',
+    'http://feeds.arstechnica.com/arstechnica/technology-lab',
+    true,
+    15,
+    'Ars Technica',
+    'tech',
+    array['auto-ingest', 'ars']
+  ),
+  (
+    'the-verge',
+    'The Verge',
+    'rss',
+    'https://www.theverge.com/rss/index.xml',
+    true,
+    15,
+    'The Verge',
+    'tech',
+    array['auto-ingest', 'verge']
+  ),
+  (
+    'techcrunch',
+    'TechCrunch',
+    'rss',
+    'https://techcrunch.com/feed/',
+    true,
+    15,
+    'TechCrunch',
+    'tech',
+    array['auto-ingest', 'techcrunch']
+  ),
+  (
+    'github-blog',
+    'GitHub Blog',
+    'rss',
+    'https://github.blog/feed/',
+    true,
+    10,
+    'GitHub Blog',
+    'tech',
+    array['auto-ingest', 'github']
+  )
+on conflict (slug) do update set
+  name = excluded.name,
+  kind = excluded.kind,
+  endpoint = excluded.endpoint,
+  default_source = excluded.default_source,
+  default_category = excluded.default_category,
+  default_tags = excluded.default_tags;
