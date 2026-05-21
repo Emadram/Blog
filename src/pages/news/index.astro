@@ -1,9 +1,13 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
+
+const baseUrl = import.meta.env.BASE_URL;
+const chipClass =
+  'inline-flex min-h-[44px] items-center rounded-full border border-slate-200 px-3 py-1.5 text-xs uppercase tracking-[0.2em] text-slate-600 transition hover:border-sky-400/60 hover:text-sky-700 dark:border-slate-800/60 dark:text-slate-300 dark:hover:text-sky-200 sm:min-h-0';
 ---
 
 <BaseLayout title="News" description="Curated news links and release highlights.">
-  <section class="space-y-6">
+  <section class="space-y-6" data-news-root>
     <header class="space-y-3">
       <p class="text-xs uppercase tracking-[0.3em] text-sky-700 dark:text-sky-200">News</p>
       <h1 class="text-3xl font-semibold tracking-tight sm:text-4xl md:text-5xl">
@@ -12,7 +16,105 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
       <p class="max-w-2xl text-sm text-slate-600 dark:text-slate-300 sm:text-base">
         A running list of articles and references that influence current work.
       </p>
+      <p class="text-sm text-slate-500 dark:text-slate-400">
+        <a
+          class="font-medium text-sky-700 underline decoration-sky-400/50 hover:text-sky-800 dark:text-sky-300"
+          href={`${baseUrl}news/rss.xml`}
+        >
+          News RSS feed
+        </a>
+      </p>
     </header>
+
+    <div class="hidden space-y-4" data-news-featured>
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <p class="text-xs uppercase tracking-[0.3em] text-slate-500 dark:text-slate-400">Featured</p>
+      </div>
+      <div class="grid gap-3 sm:grid-cols-2 sm:gap-4" data-list></div>
+      <template>
+        <article class="flex gap-2 rounded-2xl border border-slate-200 bg-white/80 p-3 dark:border-slate-800/60 dark:bg-slate-950/40 sm:gap-3">
+          <a
+            class="min-w-0 flex-1 rounded-xl px-1 py-0.5 outline-none ring-sky-400/40 transition hover:bg-slate-50/90 focus-visible:ring-2 dark:hover:bg-slate-900/50"
+            data-news-link
+            href="#"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <div class="flex flex-wrap items-center justify-between gap-2 text-[0.65rem] uppercase tracking-[0.25em] text-slate-500 dark:text-slate-400">
+              <span data-source></span>
+              <time
+                class="font-mono text-[0.7rem] tabular-nums normal-case tracking-normal text-slate-600 dark:text-slate-300"
+                data-date
+              ></time>
+            </div>
+            <h3 class="mt-2 line-clamp-2 text-left text-base font-semibold leading-snug text-slate-900 dark:text-slate-100" data-title></h3>
+            <p class="mt-1 line-clamp-2 text-left text-sm text-slate-600 dark:text-slate-300" data-summary></p>
+            <div class="mt-2 flex flex-wrap gap-1.5" data-tags></div>
+          </a>
+          <div class="flex shrink-0 flex-col gap-1 pt-0.5">
+            <button
+              type="button"
+              class="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:border-sky-400/60 hover:text-sky-700 dark:border-slate-700/60 dark:bg-slate-900/50 dark:text-slate-300 md:min-h-[2.25rem] md:min-w-[2.25rem]"
+              data-news-bookmark
+              aria-label="Bookmark story"
+              aria-pressed="false"
+            >
+              <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                <path d="M6 4h12v16l-6-4-6 4V4Z" stroke-linejoin="round" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              class="inline-flex min-h-[44px] min-w-[44px] flex-col items-center justify-center gap-0.5 rounded-xl border border-slate-200 bg-white px-2 text-[0.7rem] font-semibold tabular-nums text-slate-600 transition hover:border-sky-400/60 hover:text-sky-700 dark:border-slate-700/60 dark:bg-slate-900/50 dark:text-slate-300 md:min-h-[2.25rem] md:min-w-[2.25rem]"
+              data-news-vote
+              aria-label="Upvote story"
+              aria-pressed="false"
+            >
+              <svg class="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 5 5 13h14L12 5Z" />
+              </svg>
+              <span data-vote-count>0</span>
+            </button>
+          </div>
+        </article>
+      </template>
+    </div>
+
+    <div class="hidden space-y-4 rounded-2xl border border-slate-200 bg-white/80 p-4 dark:border-slate-800/60 dark:bg-slate-900/40" data-news-toolbar>
+      <div class="flex flex-wrap gap-2" role="tablist" aria-label="News filters">
+        <button type="button" class={chipClass} data-news-filter-tab="all" aria-pressed="true">All</button>
+        <button type="button" class={chipClass} data-news-filter-tab="pinned" aria-pressed="false">Pinned</button>
+        <button type="button" class={chipClass} data-news-filter-tab="featured" aria-pressed="false">Featured</button>
+        <button type="button" class={chipClass} data-news-filter-tab="saved" aria-pressed="false">Saved</button>
+      </div>
+
+      <div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+        <label class="sr-only" for="news-filter-source">Source</label>
+        <select
+          id="news-filter-source"
+          class="min-h-[44px] rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-800/60 dark:bg-slate-950/40 dark:text-slate-100 sm:min-h-0"
+          data-news-filter-source
+        >
+          <option value="">All sources</option>
+        </select>
+
+        <label class="sr-only" for="news-filter-sort">Sort</label>
+        <select
+          id="news-filter-sort"
+          class="min-h-[44px] rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-800/60 dark:bg-slate-950/40 dark:text-slate-100 sm:min-h-0"
+          data-news-filter-sort
+        >
+          <option value="newest">Newest</option>
+          <option value="votes">Most upvoted</option>
+          <option value="pinned">Pinned order</option>
+        </select>
+      </div>
+
+      <div class="flex flex-wrap gap-2" data-news-filter-categories aria-label="Categories"></div>
+      <div class="flex flex-wrap gap-2 hidden" data-news-filter-tags aria-label="Tags"></div>
+    </div>
+
+    <p class="hidden text-sm text-slate-600 dark:text-slate-300" data-news-summary></p>
 
     <div data-news-page aria-live="polite" aria-busy="false">
       <div class="grid gap-3 sm:grid-cols-2 sm:gap-4" data-skeleton aria-hidden="true">
@@ -35,12 +137,19 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
       <div class="hidden rounded-2xl border border-slate-200 bg-white/80 px-5 py-6 text-sm text-slate-600 dark:border-slate-800/60 dark:bg-slate-900/40 dark:text-slate-300" data-empty role="status">
         No curated links yet.
       </div>
+      <div
+        class="hidden rounded-2xl border border-slate-200 bg-white/80 px-5 py-6 text-sm text-slate-600 dark:border-slate-800/60 dark:bg-slate-900/40 dark:text-slate-300"
+        data-filter-empty
+        role="status"
+      >
+        No stories match these filters. Try clearing a filter or browse all news.
+      </div>
       <div class="hidden rounded-2xl border border-rose-200 bg-rose-50 px-5 py-6 text-sm text-rose-600 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-200" data-error role="alert">
         Unable to load news. Check your Supabase configuration.
       </div>
       <div class="hidden grid gap-3 sm:grid-cols-2 sm:gap-4" data-list></div>
       <template>
-        <article class="flex gap-2 rounded-2xl border border-slate-200 bg-white/80 p-3 dark:border-slate-800/60 dark:bg-slate-950/40 sm:gap-3">
+        <article class="flex gap-2 rounded-2xl border border-slate-200 bg-white/80 p-3 transition dark:border-slate-800/60 dark:bg-slate-950/40 sm:gap-3">
           <a
             class="min-w-0 flex-1 rounded-xl px-1 py-0.5 outline-none ring-sky-400/40 transition hover:bg-slate-50/90 focus-visible:ring-2 dark:hover:bg-slate-900/50"
             data-news-link
@@ -70,7 +179,30 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
             <p class="mt-1 line-clamp-2 text-left text-sm text-slate-600 dark:text-slate-300" data-summary></p>
             <div class="mt-2 flex flex-wrap gap-1.5" data-tags></div>
           </a>
-          <div class="flex shrink-0 flex-col justify-start pt-0.5">
+          <div class="flex shrink-0 flex-col gap-1 pt-0.5">
+            <button
+              type="button"
+              class="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:border-sky-400/60 hover:text-sky-700 dark:border-slate-700/60 dark:bg-slate-900/50 dark:text-slate-300 md:min-h-[2.25rem] md:min-w-[2.25rem]"
+              data-news-bookmark
+              aria-label="Bookmark story"
+              aria-pressed="false"
+            >
+              <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                <path d="M6 4h12v16l-6-4-6 4V4Z" stroke-linejoin="round" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              class="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:border-sky-400/60 hover:text-sky-700 dark:border-slate-700/60 dark:bg-slate-900/50 dark:text-slate-300 md:min-h-[2.25rem] md:min-w-[2.25rem]"
+              data-news-share
+              aria-label="Share story"
+            >
+              <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7" />
+                <path d="M16 6l-4-4-4 4" />
+                <path d="M12 2v14" />
+              </svg>
+            </button>
             <button
               type="button"
               class="inline-flex min-h-[44px] min-w-[44px] flex-col items-center justify-center gap-0.5 rounded-xl border border-slate-200 bg-white px-2 text-[0.7rem] font-semibold tabular-nums text-slate-600 transition hover:border-sky-400/60 hover:text-sky-700 disabled:opacity-50 dark:border-slate-700/60 dark:bg-slate-900/50 dark:text-slate-300 md:min-h-[2.25rem] md:min-w-[2.25rem]"
@@ -87,6 +219,14 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
         </article>
       </template>
     </div>
+
+    <button
+      type="button"
+      class="hidden w-full rounded-2xl border border-slate-200 bg-slate-100 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:border-sky-400/60 hover:text-sky-700 dark:border-slate-700/60 dark:bg-slate-900/60 dark:text-slate-200 dark:hover:text-sky-200"
+      data-news-load-more
+    >
+      Load more
+    </button>
   </section>
 
   <script>
