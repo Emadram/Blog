@@ -168,6 +168,7 @@ alter table public.topic_comments enable row level security;
 alter table public.topic_audit enable row level security;
 alter table public.topic_voice_sessions enable row level security;
 
+-- Trigger functions
 create or replace function public.set_updated_at()
 returns trigger
 language plpgsql
@@ -178,6 +179,17 @@ begin
     new.created_by = auth.uid();
   end if;
   new.updated_by = auth.uid();
+  return new;
+end;
+$$;
+
+-- Simple version for tables without created_by/updated_by columns
+create or replace function public.set_updated_at_simple()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at = now();
   return new;
 end;
 $$;
@@ -526,7 +538,7 @@ create policy "Admins can manage post cover images"
   with check (bucket_id = 'post-covers' and public.is_admin());
 
 -- ---------------------------------------------------------------------------
--- News votes (anonymous toggle; access via RPC only)
+-- News votes
 -- ---------------------------------------------------------------------------
 
 create table if not exists public.news_votes (
@@ -538,7 +550,6 @@ create table if not exists public.news_votes (
 );
 
 create index if not exists news_votes_news_id_idx on public.news_votes (news_id);
-
 alter table public.news_votes enable row level security;
 
 create or replace function public.toggle_news_vote(p_news_id uuid, p_voter text)
@@ -555,16 +566,13 @@ begin
   if p_voter is null or length(trim(p_voter)) < 16 then
     raise exception 'invalid voter';
   end if;
-
   if not exists (select 1 from public.news where id = p_news_id) then
     raise exception 'news not found';
   end if;
-
   select exists(
     select 1 from public.news_votes nv where nv.news_id = p_news_id and nv.voter_key = p_voter
   )
   into had_vote;
-
   if had_vote then
     delete from public.news_votes where news_id = p_news_id and voter_key = p_voter;
     now_voted := false;
@@ -572,9 +580,7 @@ begin
     insert into public.news_votes (news_id, voter_key) values (p_news_id, p_voter);
     now_voted := true;
   end if;
-
   select count(*)::bigint into new_count from public.news_votes where news_id = p_news_id;
-
   return jsonb_build_object('voted', now_voted, 'count', new_count);
 end;
 $$;
@@ -628,12 +634,10 @@ create table if not exists public.post_comments (
 );
 
 create index if not exists post_comments_post_id_idx on public.post_comments (post_id, created_at desc);
-
 alter table public.topic_audit
   add column if not exists post_id uuid references public.posts (id) on delete set null;
 alter table public.topic_audit
   add column if not exists post_comment_id uuid references public.post_comments (id) on delete set null;
-
 alter table public.post_comments enable row level security;
 
 drop policy if exists "Public post comments are readable" on public.post_comments;
@@ -650,7 +654,7 @@ create policy "Admins can manage post comments"
   with check (public.is_admin());
 
 -- ---------------------------------------------------------------------------
--- News auto-ingest (feed sources + run log; rows tagged via news.ingest_source)
+-- News auto-ingest
 -- ---------------------------------------------------------------------------
 
 create table if not exists public.news_feed_sources (
@@ -673,7 +677,6 @@ create table if not exists public.news_feed_sources (
 );
 
 create index if not exists news_feed_sources_enabled_idx on public.news_feed_sources (enabled, slug);
-
 create table if not exists public.news_ingest_log (
   id uuid primary key default gen_random_uuid(),
   source_slug text not null,
@@ -686,14 +689,13 @@ create table if not exists public.news_ingest_log (
 
 create index if not exists news_ingest_log_run_at_idx on public.news_ingest_log (run_at desc);
 create index if not exists news_ingest_log_source_slug_idx on public.news_ingest_log (source_slug, run_at desc);
-
 alter table public.news_feed_sources enable row level security;
 alter table public.news_ingest_log enable row level security;
 
 drop trigger if exists set_news_feed_sources_updated_at on public.news_feed_sources;
 create trigger set_news_feed_sources_updated_at
   before insert or update on public.news_feed_sources
-  for each row execute function public.set_updated_at();
+  for each row execute function public.set_updated_at_simple();
 
 drop policy if exists "Admins can read news feed sources" on public.news_feed_sources;
 create policy "Admins can read news feed sources"
@@ -715,94 +717,16 @@ create policy "Admins can read news ingest log"
   using (public.is_admin());
 
 insert into public.news_feed_sources (
-  slug,
-  name,
-  kind,
-  endpoint,
-  enabled,
-  fetch_limit,
-  default_source,
-  default_category,
-  default_tags
+  slug, name, kind, endpoint, enabled, fetch_limit, default_source, default_category, default_tags
 )
 values
-  (
-    'hn-top',
-    'Hacker News — Top',
-    'api',
-    'https://hacker-news.firebaseio.com/v0/topstories.json',
-    true,
-    30,
-    'Hacker News',
-    'tech',
-    array['auto-ingest', 'hn', 'top']
-  ),
-  (
-    'hn-new',
-    'Hacker News — New',
-    'api',
-    'https://hacker-news.firebaseio.com/v0/newstories.json',
-    false,
-    20,
-    'Hacker News',
-    'tech',
-    array['auto-ingest', 'hn', 'new']
-  ),
-  (
-    'lobsters',
-    'Lobsters',
-    'rss',
-    'https://lobste.rs/rss',
-    true,
-    20,
-    'Lobsters',
-    'tech',
-    array['auto-ingest', 'lobsters']
-  ),
-  (
-    'ars-technica',
-    'Ars Technica',
-    'rss',
-    'http://feeds.arstechnica.com/arstechnica/technology-lab',
-    true,
-    15,
-    'Ars Technica',
-    'tech',
-    array['auto-ingest', 'ars']
-  ),
-  (
-    'the-verge',
-    'The Verge',
-    'rss',
-    'https://www.theverge.com/rss/index.xml',
-    true,
-    15,
-    'The Verge',
-    'tech',
-    array['auto-ingest', 'verge']
-  ),
-  (
-    'techcrunch',
-    'TechCrunch',
-    'rss',
-    'https://techcrunch.com/feed/',
-    true,
-    15,
-    'TechCrunch',
-    'tech',
-    array['auto-ingest', 'techcrunch']
-  ),
-  (
-    'github-blog',
-    'GitHub Blog',
-    'rss',
-    'https://github.blog/feed/',
-    true,
-    10,
-    'GitHub Blog',
-    'tech',
-    array['auto-ingest', 'github']
-  )
+  ('hn-top', 'Hacker News — Top', 'api', 'https://hacker-news.firebaseio.com/v0/topstories.json', true, 30, 'Hacker News', 'tech', array['auto-ingest', 'hn', 'top']),
+  ('hn-new', 'Hacker News — New', 'api', 'https://hacker-news.firebaseio.com/v0/newstories.json', false, 20, 'Hacker News', 'tech', array['auto-ingest', 'hn', 'new']),
+  ('lobsters', 'Lobsters', 'rss', 'https://lobste.rs/rss', true, 20, 'Lobsters', 'tech', array['auto-ingest', 'lobsters']),
+  ('ars-technica', 'Ars Technica', 'rss', 'http://feeds.arstechnica.com/arstechnica/technology-lab', true, 15, 'Ars Technica', 'tech', array['auto-ingest', 'ars']),
+  ('the-verge', 'The Verge', 'rss', 'https://www.theverge.com/rss/index.xml', true, 15, 'The Verge', 'tech', array['auto-ingest', 'verge']),
+  ('techcrunch', 'TechCrunch', 'rss', 'https://techcrunch.com/feed/', true, 15, 'TechCrunch', 'tech', array['auto-ingest', 'techcrunch']),
+  ('github-blog', 'GitHub Blog', 'rss', 'https://github.blog/feed/', true, 10, 'GitHub Blog', 'tech', array['auto-ingest', 'github'])
 on conflict (slug) do update set
   name = excluded.name,
   kind = excluded.kind,
