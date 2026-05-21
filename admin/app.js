@@ -1,6 +1,11 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { marked } from "https://esm.sh/marked@12";
-import { SUPABASE_URL, SUPABASE_ANON_KEY, SITE_BASE_URL } from "./config.js";
+import {
+  SUPABASE_URL,
+  SUPABASE_ANON_KEY,
+  SITE_BASE_URL,
+  NEWS_SYNC_SECRET,
+} from "./config.js";
 
 const dom = {
   authSection: document.querySelector("[data-auth]"),
@@ -77,6 +82,16 @@ const dom = {
   ),
   newsAutofill: document.querySelector('[data-news-autofill]'),
   newsAutofillStatus: document.querySelector('[data-news-autofill-status]'),
+  newsFeedsPanel: document.querySelector("[data-news-feeds-panel]"),
+  newsFeedsTable: document.querySelector("[data-news-feeds-table]"),
+  newsIngestLog: document.querySelector("[data-news-ingest-log]"),
+  newsSyncAll: document.querySelector("[data-news-sync-all]"),
+  newsFeedsRefresh: document.querySelector("[data-news-feeds-refresh]"),
+  newsSyncStatus: document.querySelector("[data-news-sync-status]"),
+  newsFilters: Array.from(document.querySelectorAll("[data-news-filter]")),
+  newsIngestSourceFilter: document.querySelector("[data-news-ingest-source-filter]"),
+  newsAutoDeleteSource: document.querySelector("[data-news-auto-delete-source]"),
+  newsAutoDelete: document.querySelector("[data-news-auto-delete]"),
   projectsSelectAll: document.querySelector('[data-projects-select-all]'),
   projectsSelectedCount: document.querySelector('[data-projects-selected-count]'),
   projectsBulkDelete: document.querySelector('[data-projects-bulk-delete]'),
@@ -146,6 +161,10 @@ const state = {
     resource: "all",
     action: "all",
   },
+  newsFilter: "all",
+  newsIngestSourceFilter: "",
+  feedSources: [],
+  ingestLogs: [],
 };
 
 const normalizeBaseUrl = (value) => {
@@ -158,6 +177,8 @@ const normalizeBaseUrl = (value) => {
 const siteBaseUrl = normalizeBaseUrl(SITE_BASE_URL);
 const hasConfig = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 const NEWS_ENRICH_FUNCTION = "news-enrich";
+const NEWS_SYNC_FUNCTION = "news-sync";
+const hasSyncSecret = Boolean(NEWS_SYNC_SECRET && String(NEWS_SYNC_SECRET).trim());
 
 const supabase = hasConfig ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
@@ -1040,18 +1061,341 @@ const renderPostsList = () => {
   updateBulkScheduleState();
 };
 
+const getFilteredNews = () => {
+  let items = state.items.news;
+  if (state.newsFilter === "manual") {
+    return items.filter((item) => !item.ingest_source);
+  }
+  if (state.newsFilter === "auto") {
+    items = items.filter((item) => item.ingest_source);
+    if (state.newsIngestSourceFilter) {
+      items = items.filter((item) => item.ingest_source === state.newsIngestSourceFilter);
+    }
+    return items;
+  }
+  return items;
+};
+
+const setNewsSyncStatus = (message) => {
+  if (dom.newsSyncStatus) {
+    dom.newsSyncStatus.textContent = message || "";
+  }
+};
+
+const updateNewsFilterUI = () => {
+  dom.newsFilters.forEach((button) => {
+    const value = button.dataset.newsFilter || "all";
+    const isActive = value === state.newsFilter;
+    button.setAttribute("aria-pressed", String(isActive));
+    button.classList.toggle("active", isActive);
+  });
+  const showSourceFilter = state.newsFilter === "auto";
+  if (dom.newsIngestSourceFilter) {
+    dom.newsIngestSourceFilter.hidden = !showSourceFilter;
+  }
+};
+
+const updateNewsFeedSelectOptions = () => {
+  const slugs = new Set();
+  state.feedSources.forEach((feed) => slugs.add(feed.slug));
+  state.items.news.forEach((item) => {
+    if (item.ingest_source) {
+      slugs.add(item.ingest_source);
+    }
+  });
+  const sorted = [...slugs].sort();
+
+  const fillSelect = (select, placeholder) => {
+    if (!select) {
+      return;
+    }
+    const current = select.value;
+    select.innerHTML = "";
+    const base = document.createElement("option");
+    base.value = "";
+    base.textContent = placeholder;
+    select.appendChild(base);
+    sorted.forEach((slug) => {
+      const option = document.createElement("option");
+      option.value = slug;
+      option.textContent = slug;
+      select.appendChild(option);
+    });
+    if (sorted.includes(current)) {
+      select.value = current;
+    }
+  };
+
+  fillSelect(dom.newsIngestSourceFilter, "All feeds");
+  fillSelect(dom.newsAutoDeleteSource, "Delete auto by feed…");
+};
+
+const setNewsFilter = (filter) => {
+  state.newsFilter = filter || "all";
+  if (state.newsFilter !== "auto") {
+    state.newsIngestSourceFilter = "";
+    if (dom.newsIngestSourceFilter) {
+      dom.newsIngestSourceFilter.value = "";
+    }
+  }
+  updateNewsFilterUI();
+  renderNewsList();
+};
+
+const renderFeedsTable = () => {
+  const wrap = dom.newsFeedsTable;
+  if (!wrap) {
+    return;
+  }
+
+  if (!state.feedSources.length) {
+    wrap.innerHTML =
+      '<p class="muted">No feed sources found. Run the news auto-ingest SQL block in Supabase.</p>';
+    return;
+  }
+
+  const rows = state.feedSources
+    .map((feed) => {
+      const statusClass =
+        feed.last_status === "error" ? "feed-status-error" : "feed-status-ok";
+      const statusText = feed.last_run_at
+        ? joinMeta([
+            feed.last_status || "unknown",
+            formatDate(feed.last_run_at),
+            typeof feed.last_inserted === "number" ? `+${feed.last_inserted}` : null,
+            feed.last_error ? "error" : null,
+          ])
+        : "Never run";
+      return `<tr>
+        <td><code>${escapeHtml(feed.slug)}</code></td>
+        <td>${escapeHtml(feed.name)}</td>
+        <td>${escapeHtml(feed.kind)}</td>
+        <td>
+          <label class="sr-only" for="feed-enabled-${escapeHtml(feed.slug)}">Enabled ${escapeHtml(feed.slug)}</label>
+          <input type="checkbox" id="feed-enabled-${escapeHtml(feed.slug)}" data-feed-enabled="${escapeHtml(feed.slug)}" ${feed.enabled ? "checked" : ""} />
+        </td>
+        <td>
+          <input type="number" class="feeds-limit-input" min="1" max="100" value="${Number(feed.fetch_limit) || 20}" data-feed-limit="${escapeHtml(feed.slug)}" />
+        </td>
+        <td class="${statusClass}">${escapeHtml(statusText)}</td>
+        <td>
+          <button class="button ghost" type="button" data-feed-sync="${escapeHtml(feed.slug)}" ${hasSyncSecret ? "" : "disabled"}>Sync</button>
+        </td>
+      </tr>`;
+    })
+    .join("");
+
+  wrap.innerHTML = `<table class="feeds-table">
+    <thead>
+      <tr>
+        <th>Slug</th>
+        <th>Name</th>
+        <th>Kind</th>
+        <th>On</th>
+        <th>Limit</th>
+        <th>Last run</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+
+  if (!hasSyncSecret) {
+    setNewsSyncStatus("Add NEWS_SYNC_SECRET to admin/config.js");
+  }
+};
+
+const escapeHtml = (value) =>
+  String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+
+const renderIngestLog = () => {
+  const list = dom.newsIngestLog;
+  if (!list) {
+    return;
+  }
+  list.innerHTML = "";
+  if (!state.ingestLogs.length) {
+    const empty = document.createElement("p");
+    empty.className = "muted";
+    empty.textContent = "No ingest runs yet.";
+    list.appendChild(empty);
+    return;
+  }
+
+  state.ingestLogs.forEach((entry) => {
+    const row = document.createElement("div");
+    const errors = Array.isArray(entry.errors) ? entry.errors : [];
+    row.className = `ingest-log-item${errors.length ? " has-errors" : ""}`;
+    row.textContent = joinMeta([
+      entry.source_slug,
+      formatDate(entry.run_at),
+      `fetched ${entry.fetched}`,
+      `+${entry.inserted}`,
+      `skip ${entry.skipped}`,
+      errors.length ? `${errors.length} err` : null,
+    ]);
+    if (errors.length) {
+      const detail = document.createElement("pre");
+      detail.className = "import-sample";
+      detail.textContent = JSON.stringify(errors.slice(0, 3), null, 2);
+      row.appendChild(detail);
+    }
+    list.appendChild(row);
+  });
+};
+
+const loadFeedSources = async () => {
+  if (!supabase) {
+    return;
+  }
+  const { data, error } = await supabase
+    .from("news_feed_sources")
+    .select("*")
+    .order("slug", { ascending: true });
+
+  if (error) {
+    setStatus(`Feeds failed to load: ${error.message}`, "error");
+    return;
+  }
+  state.feedSources = data || [];
+  renderFeedsTable();
+  updateNewsFeedSelectOptions();
+};
+
+const loadIngestLog = async () => {
+  if (!supabase) {
+    return;
+  }
+  const { data, error } = await supabase
+    .from("news_ingest_log")
+    .select("*")
+    .order("run_at", { ascending: false })
+    .limit(10);
+
+  if (error) {
+    setStatus(`Ingest log failed to load: ${error.message}`, "error");
+    return;
+  }
+  state.ingestLogs = data || [];
+  renderIngestLog();
+};
+
+const triggerNewsSync = async (sources = null) => {
+  if (!hasSyncSecret) {
+    setNewsSyncStatus("Missing NEWS_SYNC_SECRET in config");
+    setStatus("Add NEWS_SYNC_SECRET to admin/config.js.", "error");
+    return;
+  }
+
+  setNewsSyncStatus("Syncing…");
+  setStatus("Running news sync…", "info");
+
+  const body = Array.isArray(sources) && sources.length ? { sources } : {};
+  const response = await fetch(`${SUPABASE_URL}/functions/v1/${NEWS_SYNC_FUNCTION}`, {
+    method: "POST",
+    headers: {
+      apikey: SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+      "Content-Type": "application/json",
+      "x-sync-secret": NEWS_SYNC_SECRET,
+    },
+    body: JSON.stringify(body),
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message = payload?.error || `Sync failed (${response.status})`;
+    setNewsSyncStatus(message);
+    setStatus("News sync failed.", "error");
+    return;
+  }
+
+  await Promise.all([loadFeedSources(), loadIngestLog(), loadNews()]);
+  const inserted = (payload?.results || []).reduce(
+    (sum, row) => sum + (Number(row?.inserted) || 0),
+    0
+  );
+  setNewsSyncStatus(`Done · +${inserted} new`);
+  setStatus("News sync finished.", "success");
+};
+
+const updateFeedEnabled = async (slug, enabled) => {
+  if (!supabase || !slug) {
+    return;
+  }
+  const { error } = await supabase
+    .from("news_feed_sources")
+    .update({ enabled })
+    .eq("slug", slug);
+  if (error) {
+    setStatus(`Feed update failed: ${error.message}`, "error");
+    await loadFeedSources();
+    return;
+  }
+  await loadFeedSources();
+  setStatus(`${slug} ${enabled ? "enabled" : "disabled"}.`, "success");
+};
+
+const updateFeedLimit = async (slug, rawLimit) => {
+  if (!supabase || !slug) {
+    return;
+  }
+  const fetchLimit = Math.min(100, Math.max(1, Number(rawLimit) || 20));
+  const { error } = await supabase
+    .from("news_feed_sources")
+    .update({ fetch_limit: fetchLimit })
+    .eq("slug", slug);
+  if (error) {
+    setStatus(`Limit update failed: ${error.message}`, "error");
+    return;
+  }
+  await loadFeedSources();
+};
+
+const handleDeleteAutoIngested = async () => {
+  const slug = dom.newsAutoDeleteSource?.value?.trim();
+  if (!slug || !supabase) {
+    setStatus("Choose a feed slug to delete auto-ingested links.", "error");
+    return;
+  }
+  const count = state.items.news.filter((item) => item.ingest_source === slug).length;
+  if (!count) {
+    setStatus(`No auto-ingested items for ${slug}.`, "info");
+    return;
+  }
+  const confirmed = window.confirm(
+    `Delete ${count} auto-ingested news link(s) from "${slug}"? Manual entries are kept.`
+  );
+  if (!confirmed) {
+    return;
+  }
+  setStatus("Deleting auto-ingested news…", "info");
+  const { error } = await supabase.from("news").delete().eq("ingest_source", slug);
+  if (error) {
+    setStatus(`Delete failed: ${error.message}`, "error");
+    return;
+  }
+  await loadNews();
+  setStatus(`Deleted auto-ingested items for ${slug}.`, "success");
+};
+
 const renderNewsList = () => {
   const list = dom.lists.news;
   if (!list) {
     return;
   }
   list.innerHTML = "";
-  const visibleNews = state.items.news;
+  const visibleNews = getFilteredNews();
   state.visibleNewsIds = visibleNews.map((item) => item.id);
   if (!visibleNews.length) {
     const empty = document.createElement("p");
     empty.className = "list-empty";
-    empty.textContent = "No news links yet.";
+    empty.textContent =
+      state.newsFilter === "all" ? "No news links yet." : "No news links match this filter.";
     list.appendChild(empty);
     updateNewsSelectionUI();
     return;
@@ -1060,6 +1404,7 @@ const renderNewsList = () => {
   visibleNews.forEach((item) => {
     const actor = formatActor(item.updated_by || item.created_by);
     const meta = joinMeta([
+      item.ingest_source ? `auto · ${item.ingest_source}` : "manual",
       item.source || null,
       formatDate(item.published_at),
       actor ? `by ${actor}` : null,
@@ -1402,6 +1747,7 @@ const loadNews = async () => {
   }
   state.items.news = data || [];
   syncSelectedNews();
+  updateNewsFeedSelectOptions();
   renderNewsList();
   refreshSelectedNews();
 };
@@ -1934,6 +2280,10 @@ const setActiveResource = (resource) => {
   Object.entries(dom.resources).forEach(([key, section]) => {
     setHidden(section, key !== resource);
   });
+  if (resource === "news" && state.isAdmin) {
+    loadFeedSources();
+    loadIngestLog();
+  }
 };
 
 const savePost = async () => {
@@ -2660,6 +3010,8 @@ const handleSession = async (session) => {
   await Promise.all([
     loadPosts(),
     loadNews(),
+    loadFeedSources(),
+    loadIngestLog(),
     loadTopics(),
     loadProjects(),
     loadActivity(),
@@ -2747,6 +3099,43 @@ const init = async () => {
   dom.newsBulkPin?.addEventListener("click", handleNewsBulkPin);
   dom.newsBulkUnpin?.addEventListener("click", handleNewsBulkUnpin);
   dom.newsBulkDelete?.addEventListener("click", handleNewsBulkDelete);
+  dom.newsAutoDelete?.addEventListener("click", handleDeleteAutoIngested);
+  dom.newsSyncAll?.addEventListener("click", () => triggerNewsSync());
+  dom.newsFeedsRefresh?.addEventListener("click", async () => {
+    setStatus("Refreshing feeds…", "info");
+    await Promise.all([loadFeedSources(), loadIngestLog()]);
+    setStatus("Feeds updated.", "success");
+  });
+  dom.newsFilters.forEach((button) => {
+    button.addEventListener("click", () => setNewsFilter(button.dataset.newsFilter));
+  });
+  dom.newsIngestSourceFilter?.addEventListener("change", () => {
+    state.newsIngestSourceFilter = dom.newsIngestSourceFilter.value || "";
+    renderNewsList();
+  });
+  dom.newsFeedsPanel?.addEventListener("click", async (event) => {
+    const syncButton = event.target.closest("[data-feed-sync]");
+    if (!syncButton?.dataset.feedSync) {
+      return;
+    }
+    await triggerNewsSync([syncButton.dataset.feedSync]);
+  });
+  dom.newsFeedsPanel?.addEventListener("change", async (event) => {
+    const enabledInput = event.target.closest("[data-feed-enabled]");
+    if (enabledInput?.dataset.feedEnabled) {
+      await updateFeedEnabled(enabledInput.dataset.feedEnabled, enabledInput.checked);
+    }
+  });
+  dom.newsFeedsPanel?.addEventListener(
+    "blur",
+    async (event) => {
+      const limitInput = event.target.closest("[data-feed-limit]");
+      if (limitInput?.dataset.feedLimit) {
+        await updateFeedLimit(limitInput.dataset.feedLimit, limitInput.value);
+      }
+    },
+    true
+  );
   dom.projectsBulkDelete?.addEventListener("click", handleProjectsBulkDelete);
   dom.newsImport?.addEventListener("click", async () => {
     const text = dom.newsImportText?.value || "";

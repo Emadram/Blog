@@ -258,7 +258,35 @@
               </div>
               <div class="resource-body">
                 <div class="resource-list surface">
+                  <div class="feeds-panel" data-news-feeds-panel>
+                    <div class="schedule-header">
+                      <div>
+                        <p class="eyebrow">Auto-ingest feeds</p>
+                        <p class="muted">Pull top stories via the news-sync Edge Function.</p>
+                      </div>
+                      <div class="schedule-actions">
+                        <button class="button ghost" type="button" data-news-sync-all>Sync all enabled</button>
+                        <button class="button ghost" type="button" data-news-feeds-refresh>Refresh</button>
+                        <span class="schedule-status" data-news-sync-status></span>
+                      </div>
+                    </div>
+                    <div class="feeds-table-wrap" data-news-feeds-table></div>
+                    <div class="ingest-log-panel">
+                      <p class="eyebrow">Recent ingest runs</p>
+                      <div class="ingest-log-list" data-news-ingest-log></div>
+                    </div>
+                  </div>
+
                   <div class="list-toolbar">
+                    <div class="news-list-filters" role="group" aria-label="News list filters">
+                      <button class="filter-chip" type="button" data-news-filter="all" aria-pressed="true">All</button>
+                      <button class="filter-chip" type="button" data-news-filter="manual" aria-pressed="false">Manual</button>
+                      <button class="filter-chip" type="button" data-news-filter="auto" aria-pressed="false">Auto-ingested</button>
+                      <label class="sr-only" for="news-ingest-source-filter">Auto feed</label>
+                      <select id="news-ingest-source-filter" class="feeds-select" data-news-ingest-source-filter hidden>
+                        <option value="">All feeds</option>
+                      </select>
+                    </div>
                     <div class="bulk-actions">
                       <label class="select-all">
                         <input type="checkbox" data-news-select-all />
@@ -268,6 +296,11 @@
                       <button class="button ghost" type="button" data-news-bulk-pin>Pin</button>
                       <button class="button ghost" type="button" data-news-bulk-unpin>Unpin</button>
                       <button class="button ghost" type="button" data-news-bulk-delete>Delete</button>
+                      <label class="sr-only" for="news-auto-delete-source">Delete auto-ingested by feed</label>
+                      <select id="news-auto-delete-source" class="feeds-select" data-news-auto-delete-source>
+                        <option value="">Delete auto by feed…</option>
+                      </select>
+                      <button class="button ghost" type="button" data-news-auto-delete>Delete auto</button>
                     </div>
                     <div class="import-panel">
                       <div class="import-header">

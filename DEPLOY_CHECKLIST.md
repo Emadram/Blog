@@ -128,12 +128,23 @@ update public.news_feed_sources set enabled = true where slug = 'hn-new';
 
 ---
 
-## 8. Still to ship in code (upcoming sprints)
+## 8. Admin app (sprint 029)
+
+**Where:** `admin/config.js` (copy from `admin/config.example.js`)
+
+Add:
+
+```js
+export const NEWS_SYNC_SECRET = "<same-as-supabase-edge-secret>";
+```
+
+Serve or redeploy admin (`npm run build` copies to `dist/admin`). News tab: feeds table, Sync, ingest log, manual/auto filters.
+
+## 9. Still to ship in code
 
 | Sprint | You will need to |
 |--------|------------------|
-| 029 Admin feeds panel | Redeploy **admin** (copied on `npm run build` to `dist/admin`) — no new SQL |
-| 030 Auto badge on site | Redeploy **site** only (GitHub Pages build) |
+| 030 Auto badge on site | Redeploy **site** only (GitHub Pages build) — no new SQL |
 
 ---
 

@@ -402,6 +402,96 @@ button {
   color: var(--muted);
 }
 
+.feeds-panel {
+  border-radius: 16px;
+  border: 1px dashed rgba(11, 107, 107, 0.2);
+  background: rgba(255, 255, 255, 0.6);
+  padding: 0.75rem;
+  display: grid;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.feeds-table-wrap {
+  overflow-x: auto;
+}
+
+.feeds-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+
+.feeds-table th,
+.feeds-table td {
+  text-align: left;
+  padding: 0.45rem 0.5rem;
+  border-bottom: 1px solid rgba(11, 107, 107, 0.12);
+  vertical-align: middle;
+}
+
+.feeds-table th {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+}
+
+.feeds-table .feed-status-ok {
+  color: #0f766e;
+}
+
+.feeds-table .feed-status-error {
+  color: #b91c1c;
+}
+
+.feeds-limit-input {
+  width: 4rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  padding: 0.25rem 0.4rem;
+  font-size: 0.8rem;
+}
+
+.feeds-select {
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  padding: 0.35rem 0.5rem;
+  font-size: 0.8rem;
+  background: rgba(255, 255, 255, 0.85);
+}
+
+.news-list-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  margin-bottom: 0.35rem;
+}
+
+.ingest-log-panel {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.ingest-log-list {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.ingest-log-item {
+  font-size: 0.78rem;
+  padding: 0.4rem 0.55rem;
+  border-radius: 10px;
+  border: 1px solid rgba(11, 107, 107, 0.12);
+  background: rgba(255, 255, 255, 0.75);
+}
+
+.ingest-log-item.has-errors {
+  border-color: rgba(185, 28, 28, 0.35);
+}
+
 .queue-summary {
   display: flex;
   flex-wrap: wrap;

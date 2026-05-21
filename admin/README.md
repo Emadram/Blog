@@ -18,3 +18,4 @@ This is a standalone admin app for managing posts, news links, and projects in S
 - The activity log is populated by database triggers on posts, news, and projects.
 - The schedule panel shows upcoming publishes and lets you clean up expired preview links.
 - News import accepts JSON arrays or CSV headers; duplicates are skipped by URL (apply `news_url_idx` from supabase/supabase-schema.sql first).
+- **Auto-ingest:** set `NEWS_SYNC_SECRET` in `admin/config.js` (same as Supabase Edge secret) to use Sync on the News tab. Manage feeds and view ingest logs there; filter list by manual vs auto-ingested.
