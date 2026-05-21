@@ -14,8 +14,11 @@ const HN_ITEM_URL = "https://hacker-news.firebaseio.com/v0/item";
 const HN_DISCUSSION_URL = "https://news.ycombinator.com/item?id=";
 const MAX_TITLE_CHARS = 160;
 const MAX_SUMMARY_CHARS = 240;
+const MAX_XML_CHARS = 2_000_000;
 const HN_FETCH_CONCURRENCY = 8;
 const HN_API_KIND = "api";
+const RSS_KIND = "rss";
+const FETCH_TIMEOUT_MS = 14000;
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
 const serviceRoleKey =
@@ -42,6 +45,13 @@ const trimText = (value, maxLength) => {
   }
   return text.length > maxLength ? text.slice(0, maxLength) : text;
 };
+
+const stripHtml = (value) =>
+  String(value || "")
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/gi, "$1")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 
 const isAuthorized = (req) => {
   if (!syncSecret) {
@@ -78,13 +88,16 @@ const mapConcurrent = async (items, limit, mapper) => {
   return results;
 };
 
-const fetchJson = async (url, timeoutMs = 12000) => {
+const fetchJson = async (url, timeoutMs = FETCH_TIMEOUT_MS) => {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetch(url, {
       signal: controller.signal,
-      headers: { Accept: "application/json" },
+      headers: {
+        Accept: "application/json",
+        "User-Agent": "EmadNewsSync/1.0",
+      },
     });
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
@@ -93,6 +106,182 @@ const fetchJson = async (url, timeoutMs = 12000) => {
   } finally {
     clearTimeout(timeout);
   }
+};
+
+const fetchText = async (url, timeoutMs = FETCH_TIMEOUT_MS) => {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        Accept: "application/rss+xml, application/atom+xml, application/xml, text/xml, */*",
+        "User-Agent": "EmadNewsSync/1.0",
+      },
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    let text = await response.text();
+    if (text.length > MAX_XML_CHARS) {
+      text = text.slice(0, MAX_XML_CHARS);
+    }
+    return text;
+  } finally {
+    clearTimeout(timeout);
+  }
+};
+
+const normalizeUrl = (raw) => {
+  const value = String(raw || "").trim();
+  if (!value) {
+    return "";
+  }
+  try {
+    const url = new URL(value);
+    if (!/^https?:$/i.test(url.protocol)) {
+      return "";
+    }
+    ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "fbclid"].forEach(
+      (key) => url.searchParams.delete(key)
+    );
+    return url.toString();
+  } catch (_error) {
+    return "";
+  }
+};
+
+const parsePublishedAt = (raw) => {
+  const value = String(raw || "").trim();
+  if (!value) {
+    return new Date().toISOString();
+  }
+  const numeric = Number(value);
+  if (Number.isFinite(numeric) && numeric > 0) {
+    const ms = numeric < 1e12 ? numeric * 1000 : numeric;
+    const parsed = new Date(ms);
+    if (!Number.isNaN(parsed.valueOf())) {
+      return parsed.toISOString();
+    }
+  }
+  const parsed = new Date(value);
+  if (!Number.isNaN(parsed.valueOf())) {
+    return parsed.toISOString();
+  }
+  return new Date().toISOString();
+};
+
+const readTag = (block, tagName) => {
+  const pattern = new RegExp(
+    `<${tagName}[^>]*>([\\s\\S]*?)<\\/${tagName}>`,
+    "i"
+  );
+  const match = block.match(pattern);
+  return match?.[1] ? stripHtml(match[1]) : "";
+};
+
+const readLink = (block) => {
+  const hrefMatch = block.match(/<link[^>]+href=["']([^"']+)["'][^>]*\/?>/i);
+  if (hrefMatch?.[1]) {
+    return hrefMatch[1].trim();
+  }
+  return readTag(block, "link");
+};
+
+const parseRss2Items = (xml) => {
+  const items = [];
+  const itemRegex = /<item[\s>]([\s\S]*?)<\/item>/gi;
+  let match;
+  while ((match = itemRegex.exec(xml)) !== null) {
+    const block = match[1];
+    items.push({
+      title: readTag(block, "title"),
+      url: readLink(block),
+      summary:
+        readTag(block, "description") ||
+        readTag(block, "content:encoded") ||
+        readTag(block, "summary"),
+      published_at:
+        readTag(block, "pubDate") ||
+        readTag(block, "published") ||
+        readTag(block, "dc:date"),
+    });
+  }
+  return items;
+};
+
+const parseAtomItems = (xml) => {
+  const items = [];
+  const entryRegex = /<entry[\s>]([\s\S]*?)<\/entry>/gi;
+  let match;
+  while ((match = entryRegex.exec(xml)) !== null) {
+    const block = match[1];
+    let url = "";
+    const linkMatches = block.matchAll(/<link[^>]*>/gi);
+    for (const linkTag of linkMatches) {
+      const tag = linkTag[0];
+      if (/rel=["']alternate["']/i.test(tag) || !/rel=/i.test(tag)) {
+        const href = tag.match(/href=["']([^"']+)["']/i);
+        if (href?.[1]) {
+          url = href[1].trim();
+          break;
+        }
+      }
+    }
+    if (!url) {
+      const href = block.match(/<link[^>]+href=["']([^"']+)["']/i);
+      url = href?.[1]?.trim() || "";
+    }
+
+    items.push({
+      title: readTag(block, "title"),
+      url,
+      summary:
+        readTag(block, "summary") ||
+        readTag(block, "content") ||
+        readTag(block, "description"),
+      published_at:
+        readTag(block, "published") ||
+        readTag(block, "updated") ||
+        readTag(block, "created"),
+    });
+  }
+  return items;
+};
+
+const parseRssFeed = (xml) => {
+  const normalized = String(xml || "").trim();
+  if (!normalized) {
+    return [];
+  }
+  if (/<feed[\s>]/i.test(normalized)) {
+    return parseAtomItems(normalized);
+  }
+  return parseRss2Items(normalized);
+};
+
+const mapToCandidate = (entry, source) => {
+  const url = normalizeUrl(entry.url);
+  const title = trimText(entry.title, MAX_TITLE_CHARS);
+  if (!url || !title) {
+    return null;
+  }
+
+  const summaryRaw = stripHtml(entry.summary);
+  const summary = summaryRaw ? trimText(summaryRaw, MAX_SUMMARY_CHARS) : null;
+
+  return {
+    title,
+    url,
+    source: source.default_source,
+    summary,
+    published_at: parsePublishedAt(entry.published_at),
+    tags: Array.isArray(source.default_tags) ? source.default_tags : [],
+    category: source.default_category || "tech",
+    pinned: false,
+    featured: false,
+    ingest_source: source.slug,
+  };
 };
 
 const resolveHnItemUrl = (item) => {
@@ -116,7 +305,7 @@ const mapHnItemToCandidate = (item, source) => {
     return null;
   }
 
-  const url = resolveHnItemUrl(item);
+  const url = normalizeUrl(resolveHnItemUrl(item));
   if (!url) {
     return null;
   }
@@ -131,13 +320,11 @@ const mapHnItemToCandidate = (item, source) => {
       ? new Date(item.time * 1000).toISOString()
       : new Date().toISOString();
 
-  const summary = trimText(item.title, MAX_SUMMARY_CHARS);
-
   return {
     title,
     url,
     source: source.default_source,
-    summary: summary || null,
+    summary: trimText(item.title, MAX_SUMMARY_CHARS) || null,
     published_at: publishedAt,
     tags: Array.isArray(source.default_tags) ? source.default_tags : [],
     category: source.default_category || "tech",
@@ -177,6 +364,32 @@ const fetchHnCandidates = async (source) => {
   });
 
   return { candidates, fetched: ids.length, errors };
+};
+
+const fetchRssCandidates = async (source) => {
+  const xml = await fetchText(source.endpoint);
+  const entries = parseRssFeed(xml).slice(0, source.fetch_limit);
+  const errors = [];
+  const candidates = [];
+  const seenUrls = new Set();
+
+  entries.forEach((entry, index) => {
+    try {
+      const mapped = mapToCandidate(entry, source);
+      if (!mapped) {
+        return;
+      }
+      if (seenUrls.has(mapped.url)) {
+        return;
+      }
+      seenUrls.add(mapped.url);
+      candidates.push(mapped);
+    } catch (error) {
+      errors.push({ index, message: error?.message || "map failed" });
+    }
+  });
+
+  return { candidates, fetched: entries.length, errors };
 };
 
 const insertCandidates = async (candidates) => {
@@ -242,32 +455,9 @@ const updateFeedSourceRun = async (slug, { status, error, inserted }) => {
     .eq("slug", slug);
 };
 
-const runSource = async (source) => {
-  if (source.kind !== HN_API_KIND) {
-    return {
-      slug: source.slug,
-      kind: source.kind,
-      status: "skipped",
-      message: "RSS feeds are handled in a later sprint.",
-      fetched: 0,
-      inserted: 0,
-      skipped: 0,
-    };
-  }
-
-  if (!source.endpoint.includes("hacker-news.firebaseio.com")) {
-    return {
-      slug: source.slug,
-      status: "skipped",
-      message: "Only Hacker News API endpoints are supported in this sprint.",
-      fetched: 0,
-      inserted: 0,
-      skipped: 0,
-    };
-  }
-
+const ingestSource = async (source, fetcher) => {
   try {
-    const { candidates, fetched, errors: fetchErrors } = await fetchHnCandidates(source);
+    const { candidates, fetched, errors: fetchErrors } = await fetcher(source);
     const { inserted, skipped } = await insertCandidates(candidates);
 
     await recordIngestLog({
@@ -286,6 +476,7 @@ const runSource = async (source) => {
 
     return {
       slug: source.slug,
+      kind: source.kind,
       status: "ok",
       fetched,
       inserted,
@@ -311,6 +502,7 @@ const runSource = async (source) => {
 
     return {
       slug: source.slug,
+      kind: source.kind,
       status: "error",
       error: message,
       fetched: 0,
@@ -318,6 +510,35 @@ const runSource = async (source) => {
       skipped: 0,
     };
   }
+};
+
+const runSource = async (source) => {
+  if (source.kind === HN_API_KIND) {
+    if (!source.endpoint.includes("hacker-news.firebaseio.com")) {
+      return {
+        slug: source.slug,
+        status: "skipped",
+        message: "Unsupported API endpoint for HN adapter.",
+        fetched: 0,
+        inserted: 0,
+        skipped: 0,
+      };
+    }
+    return ingestSource(source, fetchHnCandidates);
+  }
+
+  if (source.kind === RSS_KIND) {
+    return ingestSource(source, fetchRssCandidates);
+  }
+
+  return {
+    slug: source.slug,
+    status: "skipped",
+    message: `Unknown feed kind: ${source.kind}`,
+    fetched: 0,
+    inserted: 0,
+    skipped: 0,
+  };
 };
 
 serve(async (req) => {
