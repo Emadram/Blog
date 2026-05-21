@@ -130,7 +130,13 @@ const baseUrl = import.meta.env.BASE_URL;
                 rel="noopener noreferrer"
               >
                 <div class="flex flex-wrap items-center justify-between gap-2 text-[0.65rem] uppercase tracking-[0.25em] text-slate-500 dark:text-slate-400">
-                  <span data-source></span>
+                  <span class="flex flex-wrap items-center gap-1.5">
+                    <span data-source></span>
+                    <span
+                      class="hidden rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[0.55rem] font-semibold normal-case tracking-[0.12em] text-violet-800 dark:border-violet-500/40 dark:bg-violet-500/15 dark:text-violet-200"
+                      data-auto-badge
+                    ></span>
+                  </span>
                   <div class="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-right">
                     <div class="flex flex-col items-end gap-0.5 sm:flex-row sm:items-baseline sm:gap-2">
                       <span class="text-[0.6rem] text-slate-400 dark:text-slate-500">Published</span>

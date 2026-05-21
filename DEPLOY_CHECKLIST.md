@@ -140,11 +140,11 @@ export const NEWS_SYNC_SECRET = "<same-as-supabase-edge-secret>";
 
 Serve or redeploy admin (`npm run build` copies to `dist/admin`). News tab: feeds table, Sync, ingest log, manual/auto filters.
 
-## 9. Still to ship in code
+## 9. Public site auto badge (sprint 030)
 
-| Sprint | You will need to |
-|--------|------------------|
-| 030 Auto badge on site | Redeploy **site** only (GitHub Pages build) — no new SQL |
+Redeploy the **site** (`npm run build` + push) so `/news/` shows **Auto · HN Top** (etc.) on synced stories and the **From feeds** filter tab. No new SQL.
+
+Filter URL example: `/Blog/news/?tab=feeds&feed=hn-top`
 
 ---
 

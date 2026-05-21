@@ -202,6 +202,7 @@ const mapNews = (row) => ({
   pinned: Boolean(row.pinned),
   featured: Boolean(row.featured),
   category: row.category || null,
+  ingestSource: row.ingest_source || null,
 });
 
 const mapProject = (row) => ({
@@ -300,7 +301,8 @@ const fetchNews = async ({ limit, featuredOnly = false, pinnedOnly = false } = {
   const cacheKey = `news:${featuredOnly ? 'featured' : pinnedOnly ? 'pinned' : 'all'}:${limit || 'all'}`;
 
   const params = {
-    select: 'id,title,source,url,summary,published_at,tags,read_minutes,pinned,featured,category',
+    select:
+      'id,title,source,url,summary,published_at,tags,read_minutes,pinned,featured,category,ingest_source',
     order: 'published_at.desc',
   };
 
@@ -1332,7 +1334,30 @@ const NEWS_SAVED_KEY = 'emad-news-saved';
 const NEWS_READ_KEY = 'emad-news-read';
 const NEWS_PAGE_SIZE = 24;
 const NEWS_SORT_MODES = new Set(['newest', 'votes', 'pinned']);
-const NEWS_TAB_MODES = new Set(['all', 'pinned', 'featured', 'saved']);
+const NEWS_TAB_MODES = new Set(['all', 'pinned', 'featured', 'saved', 'feeds']);
+
+const INGEST_FEED_LABELS = {
+  'hn-top': 'HN Top',
+  'hn-new': 'HN New',
+  lobsters: 'Lobsters',
+  'ars-technica': 'Ars',
+  'the-verge': 'Verge',
+  techcrunch: 'TechCrunch',
+  'github-blog': 'GitHub',
+};
+
+const formatIngestBadgeLabel = (slug) => {
+  if (!slug) {
+    return '';
+  }
+  if (INGEST_FEED_LABELS[slug]) {
+    return INGEST_FEED_LABELS[slug];
+  }
+  return slug
+    .split('-')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+};
 
 const newsByDateDesc = (a, b) => new Date(b.publishedAt).valueOf() - new Date(a.publishedAt).valueOf();
 
@@ -1404,6 +1429,7 @@ const deriveNewsFacets = (items) => {
   const sources = new Set();
   const categories = new Set();
   const tags = new Set();
+  const ingestFeeds = new Set();
 
   items.forEach((item) => {
     if (item.source) {
@@ -1415,12 +1441,16 @@ const deriveNewsFacets = (items) => {
     if (Array.isArray(item.tags)) {
       item.tags.forEach((tag) => tags.add(tag));
     }
+    if (item.ingestSource) {
+      ingestFeeds.add(item.ingestSource);
+    }
   });
 
   return {
     sources: [...sources].sort((a, b) => a.localeCompare(b)),
     categories: [...categories].sort((a, b) => a.localeCompare(b)),
     tags: [...tags].sort((a, b) => a.localeCompare(b)).slice(0, 24),
+    ingestFeeds: [...ingestFeeds].sort((a, b) => a.localeCompare(b)),
   };
 };
 
@@ -1434,6 +1464,11 @@ const filterNewsItems = (items, filters) => {
   } else if (filters.tab === 'saved') {
     const saved = getNewsSavedIds();
     result = result.filter((item) => item.id && saved.has(item.id));
+  } else if (filters.tab === 'feeds') {
+    result = result.filter((item) => item.ingestSource);
+    if (filters.ingestFeed) {
+      result = result.filter((item) => item.ingestSource === filters.ingestFeed);
+    }
   }
 
   if (filters.source) {
@@ -1554,6 +1589,18 @@ const fillNewsCard = (root, item) => {
   const pinned = root.querySelector('[data-pinned]');
   if (pinned) {
     pinned.classList.toggle('hidden', !item.pinned);
+  }
+  const autoBadge = root.querySelector('[data-auto-badge]');
+  if (autoBadge) {
+    if (item.ingestSource) {
+      autoBadge.textContent = `Auto · ${formatIngestBadgeLabel(item.ingestSource)}`;
+      autoBadge.title = `Auto-ingested from ${item.ingestSource}`;
+      autoBadge.classList.remove('hidden');
+    } else {
+      autoBadge.textContent = '';
+      autoBadge.removeAttribute('title');
+      autoBadge.classList.add('hidden');
+    }
   }
   const tags = root.querySelector('[data-tags]');
   if (tags) {
@@ -1803,6 +1850,7 @@ export const initNewsPage = async () => {
     source: '',
     category: '',
     tag: '',
+    ingestFeed: '',
     sort: 'newest',
   };
 
@@ -1815,6 +1863,7 @@ export const initNewsPage = async () => {
     filters.source = params.get('source') || '';
     filters.category = params.get('category') || '';
     filters.tag = params.get('tag') || '';
+    filters.ingestFeed = params.get('feed') || '';
   };
 
   const writeFiltersToUrl = () => {
@@ -1844,6 +1893,11 @@ export const initNewsPage = async () => {
       params.set('tag', filters.tag);
     } else {
       params.delete('tag');
+    }
+    if (filters.ingestFeed) {
+      params.set('feed', filters.ingestFeed);
+    } else {
+      params.delete('feed');
     }
     window.history.replaceState({}, '', url);
   };
@@ -1946,6 +2000,23 @@ export const initNewsPage = async () => {
     const sortSelect = toolbar.querySelector('[data-news-filter-sort]');
     if (sortSelect) {
       sortSelect.value = filters.sort;
+    }
+
+    const feedSelect = toolbar.querySelector('[data-news-filter-feed]');
+    if (feedSelect) {
+      const currentFeed = filters.ingestFeed;
+      feedSelect.innerHTML = '<option value="">All feeds</option>';
+      facets.ingestFeeds.forEach((slug) => {
+        const option = document.createElement('option');
+        option.value = slug;
+        option.textContent = formatIngestBadgeLabel(slug);
+        if (slug === currentFeed) {
+          option.selected = true;
+        }
+        feedSelect.appendChild(option);
+      });
+      feedSelect.hidden = filters.tab !== 'feeds';
+      feedSelect.disabled = filters.tab !== 'feeds';
     }
   };
 
@@ -2088,11 +2159,22 @@ export const initNewsPage = async () => {
       button.addEventListener('click', () => {
         const tab = button.dataset.newsFilterTab || 'all';
         filters.tab = NEWS_TAB_MODES.has(tab) ? tab : 'all';
+        if (filters.tab !== 'feeds') {
+          filters.ingestFeed = '';
+        }
         visibleCount = NEWS_PAGE_SIZE;
         writeFiltersToUrl();
         renderToolbarFacets();
         renderNewsList();
       });
+    });
+
+    const feedSelect = toolbar.querySelector('[data-news-filter-feed]');
+    feedSelect?.addEventListener('change', () => {
+      filters.ingestFeed = feedSelect.value || '';
+      visibleCount = NEWS_PAGE_SIZE;
+      writeFiltersToUrl();
+      renderNewsList();
     });
 
     const sourceSelect = toolbar.querySelector('[data-news-filter-source]');
