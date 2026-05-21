@@ -9,7 +9,7 @@ const getBaseInfo = (site) => {
 
 export async function GET({ site }) {
   const { origin, basePath } = getBaseInfo(site);
-  const routes = ['', 'search/', 'blog/', 'news/', 'projects/', 'about/', 'rss.xml'];
+  const routes = ['', 'search/', 'blog/', 'news/', 'news/rss.xml', 'projects/', 'about/', 'rss.xml'];
   const now = new Date().toISOString();
 
   const urls = routes
