@@ -302,6 +302,7 @@
                       </select>
                       <button class="button ghost" type="button" data-news-auto-delete>Delete auto</button>
                     </div>
+                    <div class="news-counts queue-summary" data-news-counts aria-live="polite"></div>
                     <div class="import-panel">
                       <div class="import-header">
                         <p class="eyebrow">Import</p>
@@ -361,6 +362,14 @@
                 <div class="resource-editor">
                   <form class="resource-form surface" data-form="news">
                     <input type="hidden" name="id" />
+                    <div class="news-ingest-note hidden" data-news-ingest-note>
+                      <div class="list-title-row">
+                        <span class="news-status-pill news-status-pill--synced" data-news-ingest-pill></span>
+                      </div>
+                      <p data-news-ingest-hint>
+                        Pulled automatically by news-sync. Re-sync will not overwrite this URL (dedupe by link).
+                      </p>
+                    </div>
                     <div class="field">
                       <label for="news-title">Title</label>
                       <input id="news-title" name="title" type="text" required />

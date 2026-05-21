@@ -92,6 +92,9 @@ const dom = {
   newsIngestSourceFilter: document.querySelector("[data-news-ingest-source-filter]"),
   newsAutoDeleteSource: document.querySelector("[data-news-auto-delete-source]"),
   newsAutoDelete: document.querySelector("[data-news-auto-delete]"),
+  newsCounts: document.querySelector("[data-news-counts]"),
+  newsIngestNote: document.querySelector("[data-news-ingest-note]"),
+  newsIngestPill: document.querySelector("[data-news-ingest-pill]"),
   projectsSelectAll: document.querySelector('[data-projects-select-all]'),
   projectsSelectedCount: document.querySelector('[data-projects-selected-count]'),
   projectsBulkDelete: document.querySelector('[data-projects-bulk-delete]'),
@@ -165,6 +168,8 @@ const state = {
   newsIngestSourceFilter: "",
   feedSources: [],
   ingestLogs: [],
+  newsSyncInFlight: false,
+  newsSyncActiveSlug: null,
 };
 
 const normalizeBaseUrl = (value) => {
@@ -179,6 +184,29 @@ const hasConfig = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 const NEWS_ENRICH_FUNCTION = "news-enrich";
 const NEWS_SYNC_FUNCTION = "news-sync";
 const hasSyncSecret = Boolean(NEWS_SYNC_SECRET && String(NEWS_SYNC_SECRET).trim());
+
+const INGEST_FEED_LABELS = {
+  "hn-top": "HN Top",
+  "hn-new": "HN New",
+  lobsters: "Lobsters",
+  "ars-technica": "Ars",
+  "the-verge": "Verge",
+  techcrunch: "TechCrunch",
+  "github-blog": "GitHub",
+};
+
+const formatIngestFeedLabel = (slug) => {
+  if (!slug) {
+    return "";
+  }
+  if (INGEST_FEED_LABELS[slug]) {
+    return INGEST_FEED_LABELS[slug];
+  }
+  return slug
+    .split("-")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+};
 
 const supabase = hasConfig ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
@@ -1016,6 +1044,145 @@ const buildSelectableListItem = ({ id, title, meta, isActive, isSelected, select
   return row;
 };
 
+const buildNewsListItem = (item, { isActive, isSelected }) => {
+  const isSynced = Boolean(item?.ingest_source);
+  const row = document.createElement("div");
+  row.className = `list-item list-row${isActive ? " is-active" : ""}${
+    isSelected ? " is-selected" : ""
+  }${isSynced ? " list-item--synced" : ""}`;
+  row.dataset.itemId = item.id;
+
+  const checkbox = document.createElement("input");
+  checkbox.type = "checkbox";
+  checkbox.className = "list-check";
+  checkbox.checked = Boolean(isSelected);
+  checkbox.dataset.itemId = item.id;
+  checkbox.setAttribute("aria-label", `Select ${item.title || "news"}`);
+
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "list-body";
+  button.dataset.itemSelect = "true";
+  button.dataset.itemId = item.id;
+
+  const titleRow = document.createElement("div");
+  titleRow.className = "list-title-row";
+
+  const titleEl = document.createElement("span");
+  titleEl.className = "list-title";
+  titleEl.textContent = item.title || "Untitled";
+
+  const pill = document.createElement("span");
+  pill.className = isSynced
+    ? "news-status-pill news-status-pill--synced"
+    : "news-status-pill news-status-pill--manual";
+  if (isSynced) {
+    pill.textContent = `Synced · ${formatIngestFeedLabel(item.ingest_source)}`;
+    pill.title = `Auto-ingested from ${item.ingest_source}`;
+  } else {
+    pill.textContent = "Manual";
+  }
+
+  titleRow.appendChild(titleEl);
+  titleRow.appendChild(pill);
+
+  const metaEl = document.createElement("div");
+  metaEl.className = "list-meta";
+  const actor = formatActor(item.updated_by || item.created_by);
+  metaEl.textContent = joinMeta([
+    item.source || null,
+    formatDate(item.published_at),
+    actor ? `by ${actor}` : null,
+  ]);
+
+  button.appendChild(titleRow);
+  button.appendChild(metaEl);
+  row.appendChild(checkbox);
+  row.appendChild(button);
+  return row;
+};
+
+const updateNewsCounts = () => {
+  const el = dom.newsCounts;
+  if (!el) {
+    return;
+  }
+  const manual = state.items.news.filter((item) => !item.ingest_source).length;
+  const synced = state.items.news.filter((item) => item.ingest_source).length;
+  const pills = [
+    `<span class="summary-pill">Manual ${manual}</span>`,
+    `<span class="summary-pill">Synced ${synced}</span>`,
+  ];
+  if (state.newsFilter === "auto" && state.newsIngestSourceFilter) {
+    const filtered = getFilteredNews().length;
+    pills.push(
+      `<span class="summary-pill">${escapeHtml(formatIngestFeedLabel(state.newsIngestSourceFilter))} ${filtered}</span>`
+    );
+  }
+  el.innerHTML = pills.join("");
+};
+
+const formatFeedStatusBadge = (feed) => {
+  if (state.newsSyncInFlight && state.newsSyncActiveSlug === feed.slug) {
+    return '<span class="feed-badge feed-badge--syncing">Syncing…</span>';
+  }
+  if (!feed.last_run_at) {
+    return '<span class="feed-badge feed-badge--idle">Never run</span>';
+  }
+  if (feed.last_status === "error") {
+    const title = escapeHtml(feed.last_error || "Sync failed");
+    const detail = feed.last_run_at ? formatDate(feed.last_run_at) : "";
+    return `<span class="feed-badge feed-badge--error" title="${title}">Error</span>${
+      detail ? `<div class="feed-status-detail">${escapeHtml(detail)}</div>` : ""
+    }`;
+  }
+  if (feed.last_status === "ok") {
+    const detail = joinMeta([
+      formatDate(feed.last_run_at),
+      typeof feed.last_inserted === "number" ? `+${feed.last_inserted} new` : null,
+    ]);
+    return `<span class="feed-badge feed-badge--ok" title="${escapeHtml(detail)}">OK</span>${
+      detail ? `<div class="feed-status-detail">${escapeHtml(detail)}</div>` : ""
+    }`;
+  }
+  return `<span class="feed-badge feed-badge--idle">${escapeHtml(feed.last_status || "Unknown")}</span>`;
+};
+
+const setNewsSyncUiState = (inFlight, activeSlug = null) => {
+  state.newsSyncInFlight = Boolean(inFlight);
+  state.newsSyncActiveSlug = activeSlug || null;
+  dom.newsFeedsPanel?.classList.toggle("is-syncing", state.newsSyncInFlight);
+  if (dom.newsSyncAll) {
+    dom.newsSyncAll.disabled = state.newsSyncInFlight;
+  }
+  if (dom.newsFeedsRefresh) {
+    dom.newsFeedsRefresh.disabled = state.newsSyncInFlight;
+  }
+  if (state.newsSyncInFlight) {
+    setNewsSyncStatus("Syncing…");
+    renderFeedsTable();
+    return;
+  }
+  renderFeedsTable();
+};
+
+const updateNewsIngestNote = (item) => {
+  const note = dom.newsIngestNote;
+  if (!note) {
+    return;
+  }
+  const slug = item?.ingest_source;
+  if (!slug) {
+    note.classList.add("hidden");
+    return;
+  }
+  note.classList.remove("hidden");
+  if (dom.newsIngestPill) {
+    dom.newsIngestPill.textContent = `Synced · ${formatIngestFeedLabel(slug)}`;
+    dom.newsIngestPill.title = `Auto-ingested from ${slug}`;
+  }
+};
+
 const renderPostsList = () => {
   const list = dom.lists.posts;
   if (!list) {
@@ -1140,6 +1307,7 @@ const setNewsFilter = (filter) => {
   }
   updateNewsFilterUI();
   renderNewsList();
+  updateNewsCounts();
 };
 
 const renderFeedsTable = () => {
@@ -1154,32 +1322,24 @@ const renderFeedsTable = () => {
     return;
   }
 
+  const syncDisabled = !hasSyncSecret || state.newsSyncInFlight;
   const rows = state.feedSources
     .map((feed) => {
-      const statusClass =
-        feed.last_status === "error" ? "feed-status-error" : "feed-status-ok";
-      const statusText = feed.last_run_at
-        ? joinMeta([
-            feed.last_status || "unknown",
-            formatDate(feed.last_run_at),
-            typeof feed.last_inserted === "number" ? `+${feed.last_inserted}` : null,
-            feed.last_error ? "error" : null,
-          ])
-        : "Never run";
+      const statusBadge = formatFeedStatusBadge(feed);
       return `<tr>
         <td><code>${escapeHtml(feed.slug)}</code></td>
         <td>${escapeHtml(feed.name)}</td>
         <td>${escapeHtml(feed.kind)}</td>
         <td>
           <label class="sr-only" for="feed-enabled-${escapeHtml(feed.slug)}">Enabled ${escapeHtml(feed.slug)}</label>
-          <input type="checkbox" id="feed-enabled-${escapeHtml(feed.slug)}" data-feed-enabled="${escapeHtml(feed.slug)}" ${feed.enabled ? "checked" : ""} />
+          <input type="checkbox" id="feed-enabled-${escapeHtml(feed.slug)}" data-feed-enabled="${escapeHtml(feed.slug)}" ${feed.enabled ? "checked" : ""} ${state.newsSyncInFlight ? "disabled" : ""} />
         </td>
         <td>
-          <input type="number" class="feeds-limit-input" min="1" max="100" value="${Number(feed.fetch_limit) || 20}" data-feed-limit="${escapeHtml(feed.slug)}" />
+          <input type="number" class="feeds-limit-input" min="1" max="100" value="${Number(feed.fetch_limit) || 20}" data-feed-limit="${escapeHtml(feed.slug)}" ${state.newsSyncInFlight ? "disabled" : ""} />
         </td>
-        <td class="${statusClass}">${escapeHtml(statusText)}</td>
+        <td>${statusBadge}</td>
         <td>
-          <button class="button ghost" type="button" data-feed-sync="${escapeHtml(feed.slug)}" ${hasSyncSecret ? "" : "disabled"}>Sync</button>
+          <button class="button ghost" type="button" data-feed-sync="${escapeHtml(feed.slug)}" ${syncDisabled ? "disabled" : ""}>Sync</button>
         </td>
       </tr>`;
     })
@@ -1291,36 +1451,46 @@ const triggerNewsSync = async (sources = null) => {
     return;
   }
 
-  setNewsSyncStatus("Syncing…");
-  setStatus("Running news sync…", "info");
-
-  const body = Array.isArray(sources) && sources.length ? { sources } : {};
-  const response = await fetch(`${SUPABASE_URL}/functions/v1/${NEWS_SYNC_FUNCTION}`, {
-    method: "POST",
-    headers: {
-      apikey: SUPABASE_ANON_KEY,
-      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-      "Content-Type": "application/json",
-      "x-sync-secret": NEWS_SYNC_SECRET,
-    },
-    body: JSON.stringify(body),
-  });
-
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const message = payload?.error || `Sync failed (${response.status})`;
-    setNewsSyncStatus(message);
-    setStatus("News sync failed.", "error");
+  if (state.newsSyncInFlight) {
     return;
   }
 
-  await Promise.all([loadFeedSources(), loadIngestLog(), loadNews()]);
-  const inserted = (payload?.results || []).reduce(
-    (sum, row) => sum + (Number(row?.inserted) || 0),
-    0
-  );
-  setNewsSyncStatus(`Done · +${inserted} new`);
-  setStatus("News sync finished.", "success");
+  const activeSlug =
+    Array.isArray(sources) && sources.length === 1 ? sources[0] : null;
+  setNewsSyncUiState(true, activeSlug);
+  setStatus("Running news sync…", "info");
+
+  try {
+    const body = Array.isArray(sources) && sources.length ? { sources } : {};
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/${NEWS_SYNC_FUNCTION}`, {
+      method: "POST",
+      headers: {
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        "Content-Type": "application/json",
+        "x-sync-secret": NEWS_SYNC_SECRET,
+      },
+      body: JSON.stringify(body),
+    });
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const message = payload?.error || `Sync failed (${response.status})`;
+      setNewsSyncStatus(message);
+      setStatus("News sync failed.", "error");
+      return;
+    }
+
+    await Promise.all([loadFeedSources(), loadIngestLog(), loadNews()]);
+    const inserted = (payload?.results || []).reduce(
+      (sum, row) => sum + (Number(row?.inserted) || 0),
+      0
+    );
+    setNewsSyncStatus(`Done · +${inserted} new`);
+    setStatus("News sync finished.", "success");
+  } finally {
+    setNewsSyncUiState(false, null);
+  }
 };
 
 const updateFeedEnabled = async (slug, enabled) => {
@@ -1402,24 +1572,14 @@ const renderNewsList = () => {
   }
 
   visibleNews.forEach((item) => {
-    const actor = formatActor(item.updated_by || item.created_by);
-    const meta = joinMeta([
-      item.ingest_source ? `auto · ${item.ingest_source}` : "manual",
-      item.source || null,
-      formatDate(item.published_at),
-      actor ? `by ${actor}` : null,
-    ]);
-    const row = buildSelectableListItem({
-      id: item.id,
-      title: item.title,
-      meta,
+    const row = buildNewsListItem(item, {
       isActive: state.selected.news?.id === item.id,
       isSelected: state.selectedNewsIds.has(item.id),
-      selectLabel: `Select ${item.title || "news"}`,
     });
     list.appendChild(row);
   });
   updateNewsSelectionUI();
+  updateNewsCounts();
 };
 
 const renderProjectsList = () => {
@@ -1749,6 +1909,7 @@ const loadNews = async () => {
   syncSelectedNews();
   updateNewsFeedSelectOptions();
   renderNewsList();
+  updateNewsCounts();
   refreshSelectedNews();
 };
 
@@ -2066,6 +2227,7 @@ const resetNewsForm = () => {
   state.selected.news = null;
   lastNewsAutofillUrl = "";
   setNewsAutofillStatus("");
+  updateNewsIngestNote(null);
   renderNewsList();
 };
 
@@ -2141,6 +2303,7 @@ const fillNewsForm = (item) => {
   form.querySelector("[name=\"category\"]").value = item?.category || "";
   lastNewsAutofillUrl = normalizeImportUrl(item?.url || "");
   setNewsAutofillStatus("");
+  updateNewsIngestNote(item);
   renderNewsList();
 };
 
@@ -3112,6 +3275,7 @@ const init = async () => {
   dom.newsIngestSourceFilter?.addEventListener("change", () => {
     state.newsIngestSourceFilter = dom.newsIngestSourceFilter.value || "";
     renderNewsList();
+    updateNewsCounts();
   });
   dom.newsFeedsPanel?.addEventListener("click", async (event) => {
     const syncButton = event.target.closest("[data-feed-sync]");

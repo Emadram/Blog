@@ -492,6 +492,140 @@ button {
   border-color: rgba(185, 28, 28, 0.35);
 }
 
+.news-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  width: 100%;
+  margin-bottom: 0.35rem;
+}
+
+.list-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.news-status-pill {
+  border-radius: 999px;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.62rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  white-space: nowrap;
+}
+
+.news-status-pill--manual {
+  border: 1px solid rgba(11, 107, 107, 0.2);
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.85);
+}
+
+.news-status-pill--synced {
+  border: 1px solid rgba(109, 40, 217, 0.35);
+  color: #5b21b6;
+  background: rgba(139, 92, 246, 0.12);
+}
+
+.list-item--synced {
+  border-left: 3px solid rgba(139, 92, 246, 0.55);
+  background: rgba(139, 92, 246, 0.06);
+}
+
+.list-item--synced.is-active {
+  border-left-color: rgba(109, 40, 217, 0.75);
+  background: rgba(139, 92, 246, 0.1);
+}
+
+.feed-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.62rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  white-space: nowrap;
+}
+
+.feed-badge--ok {
+  border: 1px solid rgba(15, 118, 110, 0.35);
+  color: #0f766e;
+  background: rgba(20, 184, 166, 0.12);
+}
+
+.feed-badge--error {
+  border: 1px solid rgba(185, 28, 28, 0.35);
+  color: #b91c1c;
+  background: rgba(254, 226, 226, 0.65);
+}
+
+.feed-badge--idle {
+  border: 1px solid rgba(11, 107, 107, 0.18);
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.75);
+}
+
+.feed-badge--syncing {
+  border: 1px solid rgba(14, 116, 144, 0.35);
+  color: #0e7490;
+  background: rgba(224, 242, 254, 0.85);
+  animation: feed-badge-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes feed-badge-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+.feeds-panel.is-syncing {
+  opacity: 0.92;
+}
+
+.feeds-panel.is-syncing [data-feed-sync],
+.feeds-panel.is-syncing [data-news-sync-all],
+.feeds-panel.is-syncing [data-news-feeds-refresh] {
+  pointer-events: none;
+  opacity: 0.55;
+}
+
+.feeds-table .feed-status-detail {
+  margin-top: 0.2rem;
+  font-size: 0.68rem;
+  color: var(--muted);
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.news-ingest-note {
+  border-radius: 12px;
+  border: 1px dashed rgba(109, 40, 217, 0.35);
+  background: rgba(139, 92, 246, 0.08);
+  padding: 0.65rem 0.75rem;
+  display: grid;
+  gap: 0.35rem;
+  margin-bottom: 0.75rem;
+}
+
+.news-ingest-note.hidden {
+  display: none;
+}
+
+.news-ingest-note p {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
 .queue-summary {
   display: flex;
   flex-wrap: wrap;
