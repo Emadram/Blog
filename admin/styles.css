@@ -232,6 +232,25 @@ button {
   font-size: 0.85rem;
 }
 
+.auth-connectivity {
+  font-size: 0.78rem;
+  line-height: 1.45;
+  padding: 0.45rem 0.55rem;
+  border-radius: 10px;
+  border: 1px solid rgba(11, 107, 107, 0.18);
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.auth-connectivity[data-tone="success"] {
+  border-color: rgba(15, 118, 110, 0.35);
+  color: #0f766e;
+}
+
+.auth-connectivity[data-tone="error"] {
+  border-color: rgba(185, 28, 28, 0.35);
+  color: #b91c1c;
+}
+
 .button {
   border-radius: 999px;
   padding: 0.45rem 1rem;

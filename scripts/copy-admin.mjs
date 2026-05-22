@@ -15,7 +15,22 @@ if (!existsSync(srcDir)) {
   throw new Error("admin folder not found.");
 }
 
+const configPath = path.join(srcDir, "config.js");
+if (!existsSync(configPath)) {
+  throw new Error(
+    "admin/config.js not found. Copy admin/.env.example to admin/.env, fill values, then run: npm run admin:config"
+  );
+}
+
+const shouldCopy = (src) => {
+  const base = path.basename(src);
+  if (base === ".env" || base === ".env.example") {
+    return false;
+  }
+  return true;
+};
+
 await rm(destDir, { recursive: true, force: true });
-await cp(srcDir, destDir, { recursive: true });
+await cp(srcDir, destDir, { recursive: true, filter: shouldCopy });
 
 console.log("Copied admin to dist/admin.");

@@ -34,6 +34,10 @@ jobs:
           PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.PUBLIC_SUPABASE_ANON_KEY }}
           PUBLIC_PLAUSIBLE_DOMAIN: ${{ secrets.PUBLIC_PLAUSIBLE_DOMAIN }}
           PUBLIC_JITSI_BASE_URL: ${{ secrets.PUBLIC_JITSI_BASE_URL }}
+          SUPABASE_URL: ${{ secrets.PUBLIC_SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.PUBLIC_SUPABASE_ANON_KEY }}
+          SITE_BASE_URL: ${{ secrets.ADMIN_SITE_BASE_URL }}
+          NEWS_SYNC_SECRET: ${{ secrets.NEWS_SYNC_SECRET }}
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:

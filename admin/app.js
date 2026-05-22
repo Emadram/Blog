@@ -1,4 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 import { marked } from "https://esm.sh/marked@12";
 import {
   SUPABASE_URL,
@@ -15,6 +15,7 @@ const dom = {
   signOut: document.querySelector("[data-signout]"),
   loginForm: document.querySelector("[data-login-form]"),
   loginError: document.querySelector("[data-login-error]"),
+  authConnectivity: document.querySelector("[data-auth-connectivity]"),
   tabs: Array.from(document.querySelectorAll("[data-tab]")),
   resources: {
     posts: document.querySelector('[data-resource="posts"]'),
@@ -218,7 +219,82 @@ const formatIngestFeedLabel = (slug) => {
     .join(" ");
 };
 
-const supabase = hasConfig ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+const supabase = hasConfig
+  ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: false,
+      },
+    })
+  : null;
+
+const isNetworkAuthError = (error) => {
+  const message = String(error?.message || error || "").toLowerCase();
+  return (
+    error instanceof TypeError ||
+    message.includes("networkerror") ||
+    message.includes("failed to fetch") ||
+    message.includes("cors request did not succeed") ||
+    message.includes("load failed")
+  );
+};
+
+const formatAuthErrorMessage = (error) => {
+  if (isNetworkAuthError(error)) {
+    return [
+      "Cannot reach Supabase from this browser (network blocked).",
+      "Try: disable ad blockers / privacy extensions for localhost,",
+      "allow requests to *.supabase.co, or use Chrome instead of strict Firefox mode.",
+      "In Supabase → Authentication → URL Configuration, add",
+      "http://localhost:8000 to Site URL and Redirect URLs.",
+    ].join(" ");
+  }
+  return error?.message || "Sign in failed.";
+};
+
+const setAuthConnectivity = (message, tone = "info") => {
+  const el = dom.authConnectivity;
+  if (!el) {
+    return;
+  }
+  if (!message) {
+    el.textContent = "";
+    setHidden(el, true);
+    return;
+  }
+  el.textContent = message;
+  el.dataset.tone = tone;
+  setHidden(el, false);
+};
+
+const probeSupabaseAuth = async () => {
+  if (!hasConfig) {
+    setAuthConnectivity("Missing admin/config.js — copy admin/.env.example to admin/.env, then npm run admin:config.", "error");
+    return false;
+  }
+  setAuthConnectivity("Checking Supabase connection…", "info");
+  try {
+    const response = await fetch(`${SUPABASE_URL}/auth/v1/health`, {
+      method: "GET",
+      headers: { apikey: SUPABASE_ANON_KEY },
+      mode: "cors",
+    });
+    if (!response.ok) {
+      setAuthConnectivity(
+        `Supabase auth returned ${response.status}. Confirm project URL and anon key.`,
+        "error"
+      );
+      return false;
+    }
+    setAuthConnectivity("Supabase reachable — you can sign in.", "success");
+    return true;
+  } catch (error) {
+    console.warn("[Emad Admin · auth]", "Connectivity probe failed:", error);
+    setAuthConnectivity(formatAuthErrorMessage(error), "error");
+    return false;
+  }
+};
 
 /** Clears auth in this browser without requiring a live server session (avoids 403 session_not_found). */
 const signOutAdmin = async () => {
@@ -1079,6 +1155,7 @@ const updateUserBadge = (session) => {
 const showAuth = () => {
   setHidden(dom.authSection, false);
   setHidden(dom.dashboardSection, true);
+  probeSupabaseAuth();
 };
 
 const showDashboard = () => {
@@ -1482,7 +1559,7 @@ const renderFeedsTable = () => {
   </table>`;
 
   if (!hasSyncSecret) {
-    setNewsSyncStatus("Add NEWS_SYNC_SECRET to admin/config.js");
+    setNewsSyncStatus("Add NEWS_SYNC_SECRET to admin/.env");
   }
 };
 
@@ -1568,7 +1645,7 @@ const loadIngestLog = async () => {
 const triggerNewsSync = async (sources = null) => {
   if (!hasSyncSecret) {
     setNewsSyncStatus("Missing NEWS_SYNC_SECRET in config", "error");
-    replayNews("sync", "Add NEWS_SYNC_SECRET to admin/config.js.", "error");
+    replayNews("sync", "Add NEWS_SYNC_SECRET to admin/.env and run npm run admin:config.", "error");
     return;
   }
 
@@ -3025,7 +3102,7 @@ const autoFillNewsFromUrl = async ({ form, force = false } = {}) => {
 
   const functionsKey = getFunctionsKey();
   if (!functionsKey) {
-    setNewsAutofillStatus("Auto-fill needs a Supabase anon key (JWT). Update admin/config.js.");
+    setNewsAutofillStatus("Auto-fill needs SUPABASE_ANON_KEY in admin/.env.");
     return null;
   }
 
@@ -3422,7 +3499,7 @@ const init = async () => {
   bindNewsPanelEvents();
 
   if (!hasConfig) {
-    setStatus("Missing Supabase config in admin/config.js.", "error");
+    setStatus("Missing Supabase config. Set admin/.env and run npm run admin:config.", "error");
     if (dom.loginForm) {
       dom.loginForm.querySelector("button").disabled = true;
     }
@@ -3669,11 +3746,23 @@ const init = async () => {
 
     setHidden(dom.loginError, true);
     setStatus("Signing in...", "info");
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) {
-      dom.loginError.textContent = error.message;
+    try {
+      const reachable = await probeSupabaseAuth();
+      if (!reachable) {
+        setStatus("Cannot reach Supabase.", "error");
+        return;
+      }
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) {
+        dom.loginError.textContent = formatAuthErrorMessage(error);
+        setHidden(dom.loginError, false);
+        setStatus("Sign in failed.", "error");
+      }
+    } catch (error) {
+      dom.loginError.textContent = formatAuthErrorMessage(error);
       setHidden(dom.loginError, false);
       setStatus("Sign in failed.", "error");
+      console.error("[Emad Admin · auth]", error);
     }
   });
 

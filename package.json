@@ -8,7 +8,8 @@
   "scripts": {
     "dev": "astro dev",
     "build": "astro build",
-    "postbuild": "node scripts/copy-admin.mjs",
+    "admin:config": "node scripts/generate-admin-config.mjs",
+    "postbuild": "node scripts/generate-admin-config.mjs && node scripts/copy-admin.mjs",
     "preview": "astro preview",
     "astro": "astro"
   },
