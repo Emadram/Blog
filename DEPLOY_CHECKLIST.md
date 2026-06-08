@@ -130,15 +130,24 @@ update public.news_feed_sources set enabled = true where slug = 'hn-new';
 
 ## 8. Admin app (sprint 029)
 
-**Where:** `admin/config.js` (copy from `admin/config.example.js`)
+**Where:** `admin/.env` (copy from `admin/.env.example`, gitignored)
 
-Add:
-
-```js
-export const NEWS_SYNC_SECRET = "<same-as-supabase-edge-secret>";
+```env
+SUPABASE_URL=https://<project-ref>.supabase.co
+SUPABASE_ANON_KEY=<anon-key>
+SITE_BASE_URL=http://localhost:8000/
+NEWS_SYNC_SECRET=<same-as-supabase-edge-secret>
 ```
 
-Serve or redeploy admin (`npm run build` copies to `dist/admin`). News tab: feeds table, Sync, ingest log, manual/auto filters.
+Generate `admin/config.js` (also gitignored, used by the browser):
+
+```sh
+npm run admin:config
+```
+
+For **GitHub Pages** builds, set repo Actions secrets (or env in deploy workflow): `PUBLIC_SUPABASE_URL`, `PUBLIC_SUPABASE_ANON_KEY`, `NEWS_SYNC_SECRET`, and optionally `ADMIN_SITE_BASE_URL` (e.g. `https://emadram.github.io/Blog/`). `postbuild` runs `admin:config` before copying to `dist/admin`.
+
+Serve locally: `cd admin && python3 -m http.server 8000` after `npm run admin:config`.
 
 ## 9. Public site auto badge (sprint 030)
 
